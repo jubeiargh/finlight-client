@@ -12,15 +12,15 @@ The Finlight API Client is a TypeScript library that provides an easy-to-use int
 
 ---
 
-<!-- ## Installation
+## Installation
 
 Install the package using npm:
 
 ```bash
-npm install finlight-client
+npm i finlight-client
 ```
 
---- -->
+---
 
 ## Usage
 
@@ -249,6 +249,6 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 If you encounter any issues or have questions, feel free to reach out:
 
-- Email: [support@finlight.me](mailto:info@finlight.me)
+- Email: [info@finlight.me](mailto:info@finlight.me)
 
 Happy coding! 🎉
