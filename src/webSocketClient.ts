@@ -3,7 +3,7 @@ import { Article, BasicArticle, GetArticlesWebSocketParams } from './types';
 import { ApiClientConfig } from './config';
 
 export class WebSocketClient {
-  private webSocket: WebSocket;
+  private webSocket!: WebSocket;
   constructor(private readonly config: ApiClientConfig) {}
 
   public connect(

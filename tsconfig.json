@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "module": "commonjs",
-    "declaration": false,
+    "declaration": true,
     "removeComments": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
@@ -19,6 +19,8 @@
     "noFallthroughCasesInSwitch": false,
     "esModuleInterop": true,
     "moduleResolution": "node",
+    "strict": true
   },
-  "include": ["./src", "index.ts"]
+  "include": ["./src", "index.ts"],
+  "exclude": ["node_modules"]
 }

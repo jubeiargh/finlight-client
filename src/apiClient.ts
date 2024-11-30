@@ -42,7 +42,7 @@ export class ApiClient {
         const waitTime = this.calculateBackoff(attempts);
         console.warn(
           `Retrying (${attempts}/${maxRetries}) after ${waitTime}ms:`,
-          error.message,
+          (error as Error).message,
         );
         await this.delay(waitTime);
       }
