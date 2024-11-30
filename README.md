@@ -238,12 +238,12 @@ The client automatically retries failed requests (up to the configured `retryCou
 For other errors, or if retries are exhausted, the client will throw an exception.
 
 ---
-
+<!-- 
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
----
+--- -->
 
 ## Support
 
