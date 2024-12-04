@@ -2,8 +2,14 @@ import WebSocket from 'ws';
 import { Article, BasicArticle, GetArticlesWebSocketParams } from './types';
 import { ApiClientConfig } from './config';
 
+type WebSocketResponse<T> = {
+  action: string;
+  data: T;
+};
 export class WebSocketClient {
-  private webSocket!: WebSocket;
+  private webSocket?: WebSocket;
+  private pingInterval?: NodeJS.Timeout;
+
   constructor(private readonly config: ApiClientConfig) {}
 
   public connect(
@@ -27,21 +33,28 @@ export class WebSocketClient {
     this.webSocket.on('open', () => {
       console.debug('Connected to web socket');
       this.sendRequest(requestPayload);
+      this.createPingInterval();
     });
 
     this.webSocket.on('message', (data) => {
       try {
-        const article: Article = JSON.parse(data.toString());
-        article.publishDate = new Date(article.publishDate);
-        article.confidence = Number(article.confidence);
-        onMessage(article);
+        const message = JSON.parse(data.toString());
+        const action = message.action;
+
+        if (action === 'pong') {
+          this.handlePong();
+        }
+
+        if (action === 'sendArticle') {
+          this.receiveArticle(message, onMessage);
+        }
       } catch (error) {
         console.error('Error parsing WebSocket message:', error);
       }
     });
 
     this.webSocket.on('close', (code, reason) => {
-      console.log(
+      console.debug(
         `WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}`,
       );
     });
@@ -49,6 +62,21 @@ export class WebSocketClient {
     this.webSocket.on('error', (error) => {
       console.error('WebSocket error:', error);
     });
+  }
+
+  private createPingInterval() {
+    this.pingInterval = setInterval(
+      () => {
+        if (this.webSocket?.readyState !== WebSocket.OPEN) {
+          console.debug('WebSocket is not open. Skipping ping.');
+          return;
+        }
+
+        console.debug('PING');
+        this.webSocket?.send(JSON.stringify({ action: 'ping' }));
+      },
+      8 * 60 * 1_000,
+    ); // ~ 8 min
   }
 
   /**
@@ -67,8 +95,21 @@ export class WebSocketClient {
    * Disconnect the WebSocket connection.
    */
   disconnect(): void {
-    if (this.webSocket) {
-      this.webSocket.close();
-    }
+    clearInterval(this.pingInterval);
+    this.webSocket?.close();
+  }
+
+  private receiveArticle(
+    response: WebSocketResponse<Article>,
+    callback: (article: Article) => void,
+  ) {
+    const article = response.data;
+    article.publishDate = new Date(article.publishDate);
+    article.confidence = Number(article.confidence);
+
+    callback(article);
+  }
+  private handlePong() {
+    console.debug('PONG');
   }
 }
