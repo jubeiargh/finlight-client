@@ -74,6 +74,19 @@ const api = new FinlightApi({
 })();
 ```
 
+#### Fetch Sources
+
+```typescript
+(async () => {
+  try {
+    const sources = await api.sources.getSources();
+    console.log(sources);
+  } catch (error) {
+    console.error('Error fetching sources:', error);
+  }
+})();
+```
+
 ---
 
 ### WebSocket API
@@ -81,22 +94,24 @@ const api = new FinlightApi({
 #### Subscribe to Basic or Extended Articles
 
 ```typescript
-import { WebSocketClient } from 'finlight-client';
+import { FinlightApi } from 'finlight-client';
 
-const websocketClient = new WebSocketClient('your-api-key');
-
+const client = new FinlightApi({
+  apiKey: 'your-api-key',
+  baseUrl: 'https://api.finlight.me',
+});
 // Subscribe to basic articles
-websocketClient.connect({ query: 'economy', extended: false }, (article) => {
+client.websocket.connect({ query: 'economy', extended: false }, (article) => {
   console.log('Received basic article:', article);
 });
 
 // Subscribe to extended articles
-websocketClient.connect({ query: 'technology', extended: true }, (article) => {
+client.websocket.connect({ query: 'technology', extended: true }, (article) => {
   console.log('Received extended article:', article);
 });
 
 // Disconnect when done
-websocketClient.disconnect();
+client.websocket.disconnect();
 ```
 
 ---
@@ -238,7 +253,8 @@ The client automatically retries failed requests (up to the configured `retryCou
 For other errors, or if retries are exhausted, the client will throw an exception.
 
 ---
-<!-- 
+
+<!--
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
