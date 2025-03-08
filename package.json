@@ -1,6 +1,6 @@
 {
   "name": "finlight-client",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Finlight.me client for API and WebSocket",
   "homepage": "https://finlight.me",
   "author": "Ali Büyükkakac",
@@ -10,7 +10,9 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "license": "MIT",
   "scripts": {
     "build": "tsc",
