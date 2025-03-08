@@ -1,0 +1,28 @@
+# Ignore source files
+src/
+tsconfig.json
+
+# Ignore dev configs
+.prettierrc
+.eslintrc
+.editorconfig
+.vscode/
+.idea/
+.jest.config.js
+
+# Ignore environment files
+.env
+.env.local
+
+# Ignore build artifacts (if applicable)
+node_modules/
+dist/**/*.map
+
+# Ignore git-related files
+.git
+.gitignore
+
+# Ignore testing files
+tests/
+__tests__/
+coverage/

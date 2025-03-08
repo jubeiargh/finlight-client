@@ -2,7 +2,7 @@ import WebSocket from 'ws';
 import { Article, BasicArticle, GetArticlesWebSocketParams } from './types';
 import { ApiClientConfig } from './config';
 
-type WebSocketResponse<T> = {
+export type WebSocketResponse<T> = {
   action: string;
   data: T;
 };

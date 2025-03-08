@@ -1,8 +1,12 @@
-import { ApiClientConfig, defaultApiConfig } from './src/config';
-import { ArticleService } from './src/articleService';
-import { ApiClient } from './src/apiClient';
-import { WebSocketClient } from './src/webSocketClient';
-import { SourceService } from './src/sourceService';
+import { ApiClient } from './apiClient';
+import { ArticleService } from './articleService';
+import { ApiClientConfig, defaultApiConfig } from './config';
+import { SourceService } from './sourceService';
+import { WebSocketClient } from './webSocketClient';
+
+export { ApiClientConfig } from './config';
+export * from './types';
+export { WebSocketResponse } from './webSocketClient';
 
 export class FinlightApi {
   private apiClient: ApiClient;

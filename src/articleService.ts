@@ -3,6 +3,7 @@ import {
   GetBasicArticlesParams,
   GetExtendedArticlesParams,
   GetBasicArticleApiResponse,
+  GetArticleApiResponse,
 } from './types';
 
 export class ArticleService {
@@ -28,8 +29,8 @@ export class ArticleService {
    */
   async getExtendedArticles(
     params: GetExtendedArticlesParams,
-  ): Promise<GetBasicArticleApiResponse> {
-    return this.apiClient.request<GetBasicArticleApiResponse>(
+  ): Promise<GetArticleApiResponse> {
+    return this.apiClient.request<GetArticleApiResponse>(
       'GET',
       '/v1/articles/extended',
       params,

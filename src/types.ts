@@ -29,8 +29,14 @@ export type GetArticleApiResponse = ApiResponse<Article>;
 export interface GetBasicArticlesParams {
   query: string; // Search query
   source?: string; // Source of the article
-  from?: string; // Start date (YYYY-MM-DD)
-  to?: string; // End date (YYYY-MM-DD)
+  /**
+   *  Start date in (YYYY-MM-DD) or ISO Date string
+   */
+  from?: string;
+  /**
+   *  End date in (YYYY-MM-DD) or ISO Date string
+   */
+  to?: string;
   language?: string; // Language, default is "en"
   order?: 'ASC' | 'DESC'; // Sort order
   pageSize?: number; // Results per page (1-1000)
