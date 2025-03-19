@@ -8,16 +8,15 @@ export interface BasicArticle {
   language: string;
   sentiment?: string;
   confidence?: number;
+  summary?: string;
 }
 
 export interface Article extends BasicArticle {
-  content: string;
-  summary?: string;
+  content?: string;
 }
 
 export interface ApiResponse<T> {
   status: string;
-  totalResults: number;
   page: number;
   pageSize: number;
   articles: T[];
