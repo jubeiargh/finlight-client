@@ -5,7 +5,7 @@ import { SourceService } from './sourceService';
 import { WebSocketClient } from './webSocketClient';
 
 export { ApiClientConfig } from './config';
-export * from './types';
+export type * from './types';
 export { WebSocketResponse } from './webSocketClient';
 
 export class FinlightApi {
