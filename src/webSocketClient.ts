@@ -9,8 +9,16 @@ export type WebSocketResponse<T> = {
 export class WebSocketClient {
   private webSocket?: WebSocket;
   private pingInterval?: NodeJS.Timeout;
+  private shouldReconnect = true;
 
-  constructor(private readonly config: ApiClientConfig) {}
+  constructor(private readonly config: ApiClientConfig) {
+    process.on('SIGINT', () => {
+      console.log('Caught interrupt signal. Shutting down gracefully...');
+      this.shouldReconnect = false;
+      this.disconnect();
+      process.exit();
+    });
+  }
 
   public connect(
     requestPayload: GetArticlesWebSocketParams & { extended: false },
@@ -18,6 +26,10 @@ export class WebSocketClient {
   ): void;
   public connect(
     requestPayload: GetArticlesWebSocketParams & { extended: true },
+    onMessage: (article: Article) => void,
+  ): void;
+  public connect(
+    requestPayload: GetArticlesWebSocketParams,
     onMessage: (article: Article) => void,
   ): void;
   public connect(
@@ -57,6 +69,11 @@ export class WebSocketClient {
       console.debug(
         `WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}`,
       );
+      clearInterval(this.pingInterval);
+      if (this.shouldReconnect) {
+        console.debug('Attempting to reconnect in 1 second...');
+        setTimeout(() => this.connect(requestPayload, onMessage), 1000);
+      }
     });
 
     this.webSocket.on('error', (error) => {
@@ -75,7 +92,7 @@ export class WebSocketClient {
         console.debug('PING');
         this.webSocket?.send(JSON.stringify({ action: 'ping' }));
       },
-      8 * 60 * 1_000,
+      4 * 60 * 1_000,
     ); // ~ 8 min
   }
 
