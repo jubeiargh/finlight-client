@@ -39,6 +39,10 @@ export interface GetBasicArticlesParams {
    */
   sources?: string[];
   /**
+   * source to exclude, accepts multiple
+   */
+  excludeSources?: string[];
+  /**
    *  Start date in (YYYY-MM-DD) or ISO Date string
    */
   from?: string;
@@ -69,6 +73,7 @@ export interface GetArticlesWebSocketParams {
   query: string; // Search query
   source?: string; // Source of the article
   sources?: string[]; // Source of the article
+  excludeSources?: string[];
   language?: string; // Language, default is "en"
   extended: boolean;
 }
