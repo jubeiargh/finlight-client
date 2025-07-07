@@ -70,7 +70,7 @@ export interface GetArticlesParams {
   /**
    * Whether to skip articles that have no content
    */
-  hasContent?: boolean;
+  excludeEmptyContent?: boolean;
 
   /**
    * source to exclude, accepts multiple
