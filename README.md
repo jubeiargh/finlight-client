@@ -1,238 +1,109 @@
 # Finlight API Client
 
-The Finlight API Client is a TypeScript library that provides an easy-to-use interface for accessing the [Finlight.me API](https://finlight.me). It supports both RESTful API calls and WebSocket subscriptions, allowing you to fetch market-relevant articles and receive real-time updates.
+The **Finlight API Client** is a modern TypeScript SDK for accessing the [Finlight.me](https://finlight.me) platform. It provides robust and fully-typed REST and WebSocket interfaces to fetch market-relevant news articles enriched with sentiment, metadata, and company tagging.
 
-## Features
+## ✨ Features
 
-- Fetch basic or extended articles using REST endpoints.
-- Subscribe to WebSocket streams for real-time updates.
-- Built-in retry mechanism for robust API interactions.
-- Strongly typed with TypeScript for improved developer experience.
-- Support for `x-api-key` authentication.
+- 🔎 Advanced article search with flexible query language
+- 🔌 Real-time article streaming via WebSocket
+- 💡 Full support for company tagging and content filters
+- 🔁 Built-in retries for robust request handling
+- 🔐 Secure API key authentication
+- ✅ Strong TypeScript types for better DX
 
 ---
 
-## Installation
+## 📦 Installation
 
-Install the package using npm:
+Install the package via npm:
 
 ```bash
-npm i finlight-client
+npm install finlight-client
 ```
 
 ---
 
-## Usage
+## 🚀 Quick Start
 
-### REST API
+### Initialize the Client
 
-#### Initialize the Client
-
-```typescript
+```ts
 import { FinlightApi } from 'finlight-client';
 
 const api = new FinlightApi({
-  apiKey: 'your-api-key',
-  baseUrl: 'https://api.finlight.me',
+  apiKey: 'your-api-key', // Required
 });
 ```
 
-#### Fetch Basic Articles
+---
 
-```typescript
+## 📘 REST API Usage
+
+### Fetch Articles
+
+```ts
 (async () => {
-  try {
-    const articles = await api.articles.getBasicArticles({
-      query: 'economy',
-      language: 'en',
-      page: 1,
-      pageSize: 10,
-    });
-    console.log(articles);
-  } catch (error) {
-    console.error('Error fetching basic articles:', error);
-  }
+  const articles = await api.articles.fetchArticles({
+    query: '(ticker:AAPL OR ticker:TSLA) AND "earnings"',
+    language: 'en',
+    pageSize: 10,
+    includeCompanies: true,
+    hasContent: true,
+  });
+
+  console.log(articles);
 })();
 ```
 
-#### Fetch Extended Articles
+### Fetch Sources
 
-```typescript
+```ts
 (async () => {
-  try {
-    const articles = await api.articles.getExtendedArticles({
-      query: 'technology',
-      source: 'www.bbc.com',
-      language: 'en',
-      page: 1,
-      pageSize: 5,
-    });
-    console.log(articles);
-  } catch (error) {
-    console.error('Error fetching extended articles:', error);
-  }
-})();
-```
-
-#### Fetch Sources
-
-```typescript
-(async () => {
-  try {
-    const sources = await api.sources.getSources();
-    console.log(sources);
-  } catch (error) {
-    console.error('Error fetching sources:', error);
-  }
+  const sources = await api.sources.getSources();
+  console.log(sources);
 })();
 ```
 
 ---
 
-### WebSocket API
+## 🔄 WebSocket Streaming
 
-#### Subscribe to Basic or Extended Articles
+### Subscribe to Live Articles
 
-```typescript
+```ts
 import { FinlightApi } from 'finlight-client';
 
 const client = new FinlightApi({
   apiKey: 'your-api-key',
-  baseUrl: 'https://api.finlight.me',
-});
-// Subscribe to basic articles
-client.websocket.connect({ query: 'economy', extended: false }, (article) => {
-  console.log('Received basic article:', article);
 });
 
-// Subscribe to extended articles
-client.websocket.connect({ query: 'technology', extended: true }, (article) => {
-  console.log('Received extended article:', article);
-});
+client.websocket.connect(
+  {
+    query: 'AI AND ticker:NVDA',
+    language: 'en',
+    extended: true,
+    includeCompanies: true,
+  },
+  (article) => {
+    console.log('Live article:', article);
+  },
+);
 
-// Disconnect when done
-client.websocket.disconnect();
+// To disconnect
+// client.websocket.disconnect();
 ```
 
 ---
 
-## API Documentation
+## 🛠️ Configuration
 
-### REST Endpoints
+You can pass configuration options to customize behavior:
 
-#### Articles Service
-
-- `getBasicArticles(params: GetBasicArticlesParams): Promise<GetBasicArticleResponse>`
-
-  - Fetch basic article information with filtering options.
-
-- `getExtendedArticles(params: GetExtendedArticlesParams): Promise<GetBasicArticleResponse>`
-  - Fetch extended article information, including full content and sentiment analysis.
-
-### WebSocket Client
-
-- `connect(requestPayload: GetArticlesRequestDto, onMessage: (article: Article | BasicArticle) => void): void`
-
-  - Subscribe to basic or extended articles based on the `extended` field in `requestPayload`.
-
-- `disconnect(): void`
-  - Disconnect the WebSocket client.
-
----
-
-## Types
-
-### REST
-
-#### `GetBasicArticlesParams`
-
-```typescript
-interface GetBasicArticlesParams {
-  query: string;
-  source?: string;
-  language?: string;
-  order?: 'ASC' | 'DESC';
-  pageSize?: number;
-  page?: number;
-}
-```
-
-#### `GetBasicArticleResponse`
-
-```typescript
-interface GetBasicArticleResponse {
-  status: string;
-  totalResults: number;
-  page: number;
-  pageSize: number;
-  articles: BasicArticle[];
-}
-```
-
-#### `BasicArticle`
-
-```typescript
-interface BasicArticle {
-  link: string;
-  title: string;
-  authors: string;
-  publish_date: string;
-  language: string;
-  sentiment: string;
-  confidence: string;
-  source: string;
-}
-```
-
----
-
-### WebSocket
-
-#### `GetArticlesRequestDto`
-
-```typescript
-interface GetArticlesRequestDto {
-  query?: string;
-  source?: string;
-  language?: string;
-  extended: boolean;
-}
-```
-
-#### `Article`
-
-```typescript
-interface Article {
-  link: string;
-  title: string;
-  authors: string;
-  publish_date: string;
-  language: string;
-  sentiment: string;
-  confidence: string;
-  source: string;
-  content: string;
-  summary: string;
-}
-```
-
----
-
-## Configuration
-
-You can configure the client using the following options:
-
-- `apiKey` (required): Your Finlight API key.
-- `baseUrl`: The base URL for API requests (default: `https://api.finlight.me`).
-- `timeout`: Timeout for REST API requests in milliseconds (default: `5000`).
-- `retryCount`: Number of retry attempts for failed API requests (default: `3`).
-
-Example:
-
-```typescript
+```ts
 const api = new FinlightApi({
   apiKey: 'your-api-key',
-  baseUrl: 'https://api.finlight.me',
+  baseUrl: 'https://api.finlight.me', // optional
+  wssUrl: 'wss://api.finlight.me/ws', // optional
   timeout: 10000,
   retryCount: 5,
 });
@@ -240,9 +111,89 @@ const api = new FinlightApi({
 
 ---
 
-## Error Handling
+## 🧾 Types & Interfaces
 
-The client automatically retries failed requests (up to the configured `retryCount`) for the following HTTP status codes:
+### `GetArticlesParams`
+
+```ts
+interface GetArticlesParams {
+  query: string;
+  language?: string;
+  sources?: string[];
+  excludeSources?: string[];
+  optInSources?: string[];
+  tickers?: string[];
+  includeCompanies?: boolean;
+  hasContent?: boolean;
+  from?: string; // ISO string or YYYY-MM-DD
+  to?: string;
+  order?: 'ASC' | 'DESC';
+  pageSize?: number;
+  page?: number;
+}
+```
+
+### `Article`
+
+```ts
+interface Article {
+  link: string;
+  title: string;
+  publishDate: Date;
+  authors: string;
+  source: string;
+  language: string;
+  sentiment?: string;
+  confidence?: number;
+  summary?: string;
+  images?: string[];
+  content?: string;
+  companies?: Company[];
+}
+```
+
+### `Company`
+
+```ts
+interface Company {
+  companyId: number;
+  confidence?: number;
+  country?: string;
+  exchange?: string;
+  industry?: string;
+  sector?: string;
+  name: string;
+  ticker: string;
+  isin?: string;
+  openfigi?: string;
+}
+```
+
+---
+
+## 🧩 WebSocket API
+
+### `GetArticlesWebSocketParams`
+
+```ts
+interface GetArticlesWebSocketParams {
+  query: string;
+  language?: string;
+  extended: boolean;
+  sources?: string[];
+  excludeSources?: string[];
+  optInSources?: string[];
+  tickers?: string[];
+  includeCompanies?: boolean;
+  hasContent?: boolean;
+}
+```
+
+---
+
+## ❗ Error Handling & Retry Logic
+
+The client retries failed HTTP requests up to the configured `retryCount` for:
 
 - `429 Too Many Requests`
 - `500 Internal Server Error`
@@ -250,21 +201,18 @@ The client automatically retries failed requests (up to the configured `retryCou
 - `503 Service Unavailable`
 - `504 Gateway Timeout`
 
-For other errors, or if retries are exhausted, the client will throw an exception.
+On WebSocket disconnection, the client attempts automatic reconnection every second unless `SIGINT` is received or `shouldReconnect` is disabled.
 
 ---
 
-<!--
-## License
+## 📮 Support
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+If you encounter issues or have questions:
 
---- -->
+- 📧 Email: [info@finlight.me](mailto:info@finlight.me)
 
-## Support
+---
 
-If you encounter any issues or have questions, feel free to reach out:
+## 🎉 Happy coding!
 
-- Email: [info@finlight.me](mailto:info@finlight.me)
-
-Happy coding! 🎉
+Finlight helps you stay ahead of the market with real-time, enriched news feeds.
