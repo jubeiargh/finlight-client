@@ -12,12 +12,7 @@ export class ApiClient {
     });
   }
 
-  async request<T>(
-    method: 'GET' | 'POST',
-    url: string,
-    params?: Record<string, any>,
-    data?: any,
-  ): Promise<T> {
+  async request<T>(method: 'GET' | 'POST', url: string, data?: any): Promise<T> {
     let attempts = 0;
     const maxRetries = this.config.retryCount ?? 3;
 
@@ -26,7 +21,6 @@ export class ApiClient {
         const response = await this.client.request<T>({
           method,
           url,
-          params,
           data,
         });
         return response.data;
@@ -40,10 +34,7 @@ export class ApiClient {
 
         // Wait for some time before retrying
         const waitTime = this.calculateBackoff(attempts);
-        console.warn(
-          `Retrying (${attempts}/${maxRetries}) after ${waitTime}ms:`,
-          (error as Error).message,
-        );
+        console.warn(`Retrying (${attempts}/${maxRetries}) after ${waitTime}ms:`, (error as Error).message);
         await this.delay(waitTime);
       }
     }

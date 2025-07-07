@@ -1,5 +1,5 @@
 import WebSocket from 'ws';
-import { Article, BasicArticle, GetArticlesWebSocketParams } from './types';
+import { Article, GetArticlesWebSocketParams } from './types';
 import { ApiClientConfig } from './config';
 
 export type WebSocketResponse<T> = {
@@ -20,22 +20,7 @@ export class WebSocketClient {
     });
   }
 
-  public connect(
-    requestPayload: GetArticlesWebSocketParams & { extended: false },
-    onMessage: (article: BasicArticle) => void,
-  ): void;
-  public connect(
-    requestPayload: GetArticlesWebSocketParams & { extended: true },
-    onMessage: (article: Article) => void,
-  ): void;
-  public connect(
-    requestPayload: GetArticlesWebSocketParams,
-    onMessage: (article: Article) => void,
-  ): void;
-  public connect(
-    requestPayload: GetArticlesWebSocketParams,
-    onMessage: (article: Article) => void,
-  ): void {
+  public connect(requestPayload: GetArticlesWebSocketParams, onMessage: (article: Article) => void): void {
     this.webSocket = new WebSocket(this.config.wssUrl, {
       headers: {
         'x-api-key': this.config.apiKey,
@@ -60,15 +45,17 @@ export class WebSocketClient {
         if (action === 'sendArticle') {
           this.receiveArticle(message, onMessage);
         }
+
+        if (action === 'error') {
+          this.handleError(data);
+        }
       } catch (error) {
         console.error('Error parsing WebSocket message:', error);
       }
     });
 
     this.webSocket.on('close', (code, reason) => {
-      console.debug(
-        `WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}`,
-      );
+      console.debug(`WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}`);
       clearInterval(this.pingInterval);
       if (this.shouldReconnect) {
         console.debug('Attempting to reconnect in 1 second...');
@@ -79,6 +66,12 @@ export class WebSocketClient {
     this.webSocket.on('error', (error) => {
       console.error('WebSocket error:', error);
     });
+  }
+  handleError(error: WebSocket.RawData) {
+    console.error('WebSocket error:', error);
+    clearInterval(this.pingInterval);
+    this.shouldReconnect = false;
+    this.disconnect();
   }
 
   private createPingInterval() {
@@ -116,10 +109,7 @@ export class WebSocketClient {
     this.webSocket?.close();
   }
 
-  private receiveArticle(
-    response: WebSocketResponse<Article>,
-    callback: (article: Article) => void,
-  ) {
+  private receiveArticle(response: WebSocketResponse<Article>, callback: (article: Article) => void) {
     const article = response.data;
     article.publishDate = new Date(article.publishDate);
     article.confidence = Number(article.confidence);

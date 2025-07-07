@@ -14,9 +14,7 @@ export class FinlightApi {
   public sources: SourceService;
   public websocket: WebSocketClient;
 
-  constructor(
-    config: Partial<ApiClientConfig> & Pick<ApiClientConfig, 'apiKey'>,
-  ) {
+  constructor(config: Partial<ApiClientConfig> & Pick<ApiClientConfig, 'apiKey'>) {
     const finalConfig = { ...defaultApiConfig, ...config };
     this.apiClient = new ApiClient(finalConfig);
     this.articles = new ArticleService(this.apiClient);
