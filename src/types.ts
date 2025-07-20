@@ -41,7 +41,7 @@ export interface GetArticlesParams {
    * Supports advanced query language:
    * e.g: (ticker:AAPL OR ticker:NVDA) AND NOT source:www.reuters.com AND "Elon Musk"
    */
-  query: string; // Search query
+  query?: string; // Search query
   /**
    * @deprecated => use sources
    * source of the articles
@@ -91,7 +91,7 @@ export interface GetArticlesParams {
 }
 
 export interface GetArticlesWebSocketParams {
-  query: string; // Search query
+  query?: string; // Search query
   /**
    * Limit search to sources. Will overwrite default source set. Take a look at the sources API endpoint to know which endpoints are available and are on by default
    */
