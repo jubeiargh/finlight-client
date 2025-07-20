@@ -93,11 +93,6 @@ export interface GetArticlesParams {
 export interface GetArticlesWebSocketParams {
   query: string; // Search query
   /**
-   * @deprecated => use sources
-   * source of the articles
-   */
-  source?: string; // Source of the article
-  /**
    * Limit search to sources. Will overwrite default source set. Take a look at the sources API endpoint to know which endpoints are available and are on by default
    */
   sources?: string[]; // Source of the article
@@ -107,6 +102,10 @@ export interface GetArticlesWebSocketParams {
    */
   optInSources?: string[];
   language?: string; // Language, default is "en"
+  /**
+   * @deprecated => includeContent
+   * whether to include content
+   */
   extended: boolean;
   /**
    * Ticker of companies like: AAPL, NVDA
@@ -115,9 +114,18 @@ export interface GetArticlesWebSocketParams {
   /**
    * Whether to get tagged company data
    */
-  includeCompanies?: boolean;
+  includeEntities?: boolean;
   /**
    * Whether to skip articles that have no content
    */
-  hasContent?: boolean;
+  excludeEmptyContent?: boolean;
+
+  //  whether to include content
+  includeContent?: boolean;
+}
+
+export interface Source {
+  domain: string;
+  isContentAvailable: boolean;
+  isDefaultSource: boolean;
 }

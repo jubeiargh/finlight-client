@@ -1,4 +1,5 @@
 import { ApiClient } from './apiClient';
+import { Source } from './types';
 
 export class SourceService {
   constructor(private apiClient: ApiClient) {}
@@ -6,7 +7,7 @@ export class SourceService {
   /**
    * Fetch all sources
    */
-  async getSources(): Promise<string[]> {
-    return this.apiClient.request<string[]>('GET', '/v1/sources');
+  async getSources(): Promise<Source[]> {
+    return this.apiClient.request<Source[]>('GET', '/v2/sources');
   }
 }
