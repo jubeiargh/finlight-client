@@ -4,12 +4,24 @@ import { WebhookService, WebhookVerificationError } from './webhookService';
 describe('WebhookService', () => {
   const endpointSecret = 'test_secret_key';
   const validPayload = {
-    eventId: 'evt_123',
-    webhookId: 'whk_456',
-    userId: 'usr_789',
-    payload: { data: 'test data' },
-    createdAt: '2024-01-01T00:00:00Z',
-    retryCount: 0,
+    link: 'https://example.com/article',
+    title: 'Test Article',
+    publishDate: '2024-01-01T00:00:00Z',
+    authors: 'John Doe',
+    source: 'example.com',
+    language: 'en',
+    sentiment: 'positive',
+    confidence: '0.95',
+    summary: 'This is a test article',
+    companies: [
+      {
+        companyId: 1,
+        confidence: '0.90',
+        name: 'Apple Inc.',
+        ticker: 'AAPL',
+        exchange: 'NASDAQ',
+      },
+    ],
   };
 
   const createSignature = (payload: string, secret: string, timestamp?: string): string => {
@@ -23,18 +35,25 @@ describe('WebhookService', () => {
       const timestamp = new Date().toISOString();
       const signature = `sha256=${createSignature(rawBody, endpointSecret, timestamp)}`;
 
-      const event = WebhookService.constructEvent(rawBody, signature, endpointSecret, timestamp);
+      const article = WebhookService.constructEvent(rawBody, signature, endpointSecret, timestamp);
 
-      expect(event).toEqual(validPayload);
+      expect(article.title).toBe(validPayload.title);
+      expect(article.link).toBe(validPayload.link);
+      expect(article.publishDate).toBeInstanceOf(Date);
+      expect(article.publishDate.getTime()).toBe(new Date(validPayload.publishDate).getTime());
+      expect(article.confidence).toBe(0.95);
+      expect(article.companies?.[0].confidence).toBe(0.9);
     });
 
     it('should successfully verify and construct event with valid signature without timestamp', () => {
       const rawBody = JSON.stringify(validPayload);
       const signature = `sha256=${createSignature(rawBody, endpointSecret)}`;
 
-      const event = WebhookService.constructEvent(rawBody, signature, endpointSecret);
+      const article = WebhookService.constructEvent(rawBody, signature, endpointSecret);
 
-      expect(event).toEqual(validPayload);
+      expect(article.title).toBe(validPayload.title);
+      expect(article.publishDate).toBeInstanceOf(Date);
+      expect(article.confidence).toBe(0.95);
     });
 
     it('should work with signature without sha256= prefix', () => {
@@ -42,9 +61,10 @@ describe('WebhookService', () => {
       const timestamp = new Date().toISOString();
       const signature = createSignature(rawBody, endpointSecret, timestamp);
 
-      const event = WebhookService.constructEvent(rawBody, signature, endpointSecret, timestamp);
+      const article = WebhookService.constructEvent(rawBody, signature, endpointSecret, timestamp);
 
-      expect(event).toEqual(validPayload);
+      expect(article.title).toBe(validPayload.title);
+      expect(article.publishDate).toBeInstanceOf(Date);
     });
 
     it('should throw error for invalid signature', () => {
@@ -87,9 +107,10 @@ describe('WebhookService', () => {
       const recentTimestamp = new Date(Date.now() - 4 * 60 * 1000).toISOString(); // 4 minutes ago
       const signature = `sha256=${createSignature(rawBody, endpointSecret, recentTimestamp)}`;
 
-      const event = WebhookService.constructEvent(rawBody, signature, endpointSecret, recentTimestamp);
+      const article = WebhookService.constructEvent(rawBody, signature, endpointSecret, recentTimestamp);
 
-      expect(event).toEqual(validPayload);
+      expect(article.title).toBe(validPayload.title);
+      expect(article.publishDate).toBeInstanceOf(Date);
     });
 
     it('should throw error for invalid JSON payload', () => {
@@ -103,27 +124,50 @@ describe('WebhookService', () => {
 
     it('should handle payload with different data types', () => {
       const complexPayload = {
-        eventId: 'evt_complex',
-        webhookId: 'whk_complex',
-        userId: 'usr_complex',
-        payload: {
-          string: 'test',
-          number: 123,
-          boolean: true,
-          null: null,
-          array: [1, 2, 3],
-          nested: { key: 'value' },
-        },
-        createdAt: new Date().toISOString(),
-        retryCount: 5,
+        link: 'https://example.com/complex-article',
+        title: 'Complex Article with Multiple Companies',
+        publishDate: '2024-01-01T12:30:00Z',
+        authors: 'Jane Smith, Bob Johnson',
+        source: 'financial-news.com',
+        language: 'en',
+        sentiment: 'neutral',
+        confidence: '0.85',
+        summary: 'A comprehensive analysis of market trends',
+        images: ['https://example.com/image1.jpg', 'https://example.com/image2.jpg'],
+        content: 'Full article content here...',
+        companies: [
+          {
+            companyId: 1,
+            confidence: '0.95',
+            country: 'US',
+            exchange: 'NASDAQ',
+            industry: 'Technology',
+            sector: 'Software',
+            name: 'Apple Inc.',
+            ticker: 'AAPL',
+            isin: 'US0378331005',
+            openfigi: 'BBG000B9XRY4',
+          },
+          {
+            companyId: 2,
+            confidence: '0.88',
+            name: 'Microsoft Corporation',
+            ticker: 'MSFT',
+          },
+        ],
       };
 
       const rawBody = JSON.stringify(complexPayload);
       const signature = `sha256=${createSignature(rawBody, endpointSecret)}`;
 
-      const event = WebhookService.constructEvent(rawBody, signature, endpointSecret);
+      const article = WebhookService.constructEvent(rawBody, signature, endpointSecret);
 
-      expect(event).toEqual(complexPayload);
+      expect(article.title).toBe(complexPayload.title);
+      expect(article.companies).toHaveLength(2);
+      expect(article.companies?.[0].confidence).toBe(0.95);
+      expect(article.companies?.[1].confidence).toBe(0.88);
+      expect(article.publishDate).toBeInstanceOf(Date);
+      expect(article.confidence).toBe(0.85);
     });
 
     it('should be case-sensitive for signatures', () => {

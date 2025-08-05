@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import { Article } from './types';
+import { transformArticle } from './utils';
 
 const SIGNATURE_PREFIX = 'sha256=';
 const REPLAY_ATTACK_TOLERANCE_MS = 5 * 60 * 1000; // 5 minutes
@@ -10,15 +12,6 @@ export class WebhookVerificationError extends Error {
   }
 }
 
-export interface WebhookEvent {
-  eventId: string;
-  webhookId: string;
-  userId: string;
-  payload: any;
-  createdAt: string;
-  retryCount: number;
-}
-
 export class WebhookService {
   /**
    * Constructs and verifies a webhook event from the raw request data.
@@ -27,10 +20,10 @@ export class WebhookService {
    * @param signature - The signature from the X-Webhook-Signature header
    * @param endpointSecret - The webhook endpoint secret
    * @param timestamp - Optional timestamp from the X-Webhook-Timestamp header for replay protection
-   * @returns The verified webhook event
+   * @returns The verified article
    * @throws {WebhookVerificationError} If verification fails
    */
-  static constructEvent(rawBody: string, signature: string, endpointSecret: string, timestamp?: string): WebhookEvent {
+  static constructEvent(rawBody: string, signature: string, endpointSecret: string, timestamp?: string): Article {
     const normalizedSignature = this.normalizeSignature(signature);
 
     this.verifySignature(rawBody, normalizedSignature, endpointSecret, timestamp);
@@ -66,9 +59,10 @@ export class WebhookService {
     }
   }
 
-  private static parsePayload(rawBody: string): WebhookEvent {
+  private static parsePayload(rawBody: string): Article {
     try {
-      return JSON.parse(rawBody);
+      const parsed = JSON.parse(rawBody);
+      return transformArticle(parsed);
     } catch (error) {
       throw new WebhookVerificationError('Invalid JSON payload');
     }

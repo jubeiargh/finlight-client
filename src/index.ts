@@ -8,7 +8,8 @@ import { WebSocketClient } from './webSocketClient';
 export { ApiClientConfig } from './config';
 export type * from './types';
 export { WebSocketResponse } from './webSocketClient';
-export { WebhookService, WebhookVerificationError, WebhookEvent } from './webhookService';
+export { WebhookService, WebhookVerificationError } from './webhookService';
+export { transformArticle, transformArticles } from './utils';
 
 export class FinlightApi {
   private apiClient: ApiClient;

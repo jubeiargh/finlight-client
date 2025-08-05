@@ -1,6 +1,7 @@
 import WebSocket from 'ws';
 import { Article, GetArticlesWebSocketParams } from './types';
 import { ApiClientConfig } from './config';
+import { transformArticle } from './utils';
 
 export type WebSocketResponse<T> = {
   action: string;
@@ -110,11 +111,8 @@ export class WebSocketClient {
   }
 
   private receiveArticle(response: WebSocketResponse<Article>, callback: (article: Article) => void) {
-    const article = response.data;
-    article.publishDate = new Date(article.publishDate);
-    article.confidence = Number(article.confidence);
-
-    callback(article);
+    const transformedArticle = transformArticle(response.data);
+    callback(transformedArticle);
   }
   private handlePong() {
     console.debug('PONG');
