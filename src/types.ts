@@ -3,7 +3,6 @@ export interface Article {
   link: string;
   title: string;
   publishDate: Date;
-  authors: string;
   source: string;
   language: string;
   sentiment?: string;
