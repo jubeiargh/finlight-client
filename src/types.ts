@@ -62,6 +62,7 @@ export interface GetArticlesParams {
    */
   optInSources?: string[];
 
+  includeContent?: boolean;
   /**
    * Whether to get tagged company data
    */
