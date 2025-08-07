@@ -66,7 +66,7 @@ export interface GetArticlesParams {
   /**
    * Whether to get tagged company data
    */
-  includeCompanies?: boolean;
+  includeEntities?: boolean;
   /**
    * Whether to skip articles that have no content
    */
