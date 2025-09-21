@@ -127,6 +127,7 @@ interface GetArticlesParams {
   hasContent?: boolean;
   from?: string; // ISO string or YYYY-MM-DD
   to?: string;
+  orderBy?: 'publishDate' | 'createdAt';
   order?: 'ASC' | 'DESC';
   pageSize?: number;
   page?: number;
@@ -166,6 +167,15 @@ interface Company {
   ticker: string;
   isin?: string;
   openfigi?: string;
+  primaryListing?: Listing;
+  isins?: string[];
+  otherListings?: Listing[];
+}
+
+interface Listing {
+  ticker: string;
+  exchangeCode: string;
+  exchangeCountry: string;
 }
 ```
 

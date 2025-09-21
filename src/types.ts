@@ -13,6 +13,12 @@ export interface Article {
   companies?: Company[];
 }
 
+export interface Listing {
+  ticker: string;
+  exchangeCode: string;
+  exchangeCountry: string;
+}
+
 export interface Company {
   companyId: number;
   confidence?: number;
@@ -24,6 +30,9 @@ export interface Company {
   ticker: string;
   isin?: string;
   openfigi?: string;
+  primaryListing?: Listing;
+  isins?: string[];
+  otherListings?: Listing[];
 }
 
 export interface ApiResponse<T> {
@@ -85,6 +94,7 @@ export interface GetArticlesParams {
    */
   to?: string;
   language?: string; // Language, default is "en"
+  orderBy?: 'publishDate' | 'createdAt'; // Order by
   order?: 'ASC' | 'DESC'; // Sort order
   pageSize?: number; // Results per page (1-1000)
   page?: number; // Page number
