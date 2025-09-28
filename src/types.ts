@@ -116,7 +116,7 @@ export interface GetArticlesWebSocketParams {
    * @deprecated => includeContent
    * whether to include content
    */
-  extended: boolean;
+  extended?: boolean;
   /**
    * Ticker of companies like: AAPL, NVDA
    */
