@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { WebhookService, WebhookVerificationError } from './webhookService';
+import { WebhookService, WebhookVerificationError } from '../services/webhookService';
 
 describe('WebhookService', () => {
   const endpointSecret = 'test_secret_key';
