@@ -107,7 +107,6 @@ export class WebSocketClient {
 
             // Send article search request to $default route
             this.webSocket?.send(JSON.stringify(messageData));
-            resolve();
           });
 
           this.webSocket.on('message', (data) => {
@@ -116,6 +115,7 @@ export class WebSocketClient {
 
           this.webSocket.on('close', (code, reason) => {
             this.handleClose(code, reason.toString());
+            resolve();
           });
 
           this.webSocket.on('error', (error) => {
@@ -124,9 +124,6 @@ export class WebSocketClient {
           });
         });
 
-        // If we get here, connection was successful but then closed
-        // The reconnection logic will be handled by handleClose
-        break;
       } catch (error) {
         console.error('❌ Connection error:', error);
 
