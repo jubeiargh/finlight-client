@@ -1,14 +1,14 @@
-import { ApiClient } from './apiClient';
-import { ArticleService } from './articleService';
-import { ApiClientConfig, defaultApiConfig } from './config';
-import { SourceService } from './sourceService';
-import { WebhookService } from './webhookService';
-import { WebSocketClient, WebSocketClientOptions } from './webSocketClient';
+import { ApiClient } from './client/apiClient';
+import { WebSocketClient, WebSocketClientOptions } from './client/webSocketClient';
+import { ArticleService } from './services/articleService';
+import { SourceService } from './services/sourceService';
+import { WebhookService } from './services/webhookService';
+import { ApiClientConfig, defaultApiConfig } from './types/config';
 
-export { ApiClientConfig } from './config';
-export type * from './types';
-export { WebSocketResponse, WebSocketClientOptions } from './webSocketClient';
-export { WebhookService, WebhookVerificationError } from './webhookService';
+export { ApiClientConfig } from './types/config';
+export type * from './types/types';
+export { WebSocketResponse, WebSocketClientOptions } from './client/webSocketClient';
+export { WebhookService, WebhookVerificationError } from './services/webhookService';
 export { transformArticle, transformArticles } from './utils';
 
 export class FinlightApi {

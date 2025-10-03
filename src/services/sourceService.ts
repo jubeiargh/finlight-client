@@ -1,5 +1,5 @@
-import { ApiClient } from './apiClient';
-import { Source } from './types';
+import { ApiClient } from '../client/apiClient';
+import { Source } from '../types';
 
 /**
  * Service for managing and querying available news sources.

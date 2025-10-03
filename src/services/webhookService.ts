@@ -1,6 +1,6 @@
 import crypto from 'crypto';
-import { Article } from './types';
-import { transformArticle } from './utils';
+import { Article } from '../types';
+import { transformArticle } from '../utils';
 
 const SIGNATURE_PREFIX = 'sha256=';
 const REPLAY_ATTACK_TOLERANCE_MS = 5 * 60 * 1000; // 5 minutes

@@ -1,10 +1,9 @@
 import WebSocket from 'ws';
-import { Article, GetArticlesWebSocketParams } from './types';
-import { ApiClientConfig } from './config';
-import { transformArticle } from './utils';
+import { Article, GetArticlesWebSocketParams, ApiClientConfig } from '../types';
+import { transformArticle } from '../utils';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const packageJson = require('../package.json');
+const packageJson = require('../../package.json');
 const CLIENT_VERSION = `typescript/${packageJson.name}@${packageJson.version}`;
 
 export type WebSocketResponse<T> = {

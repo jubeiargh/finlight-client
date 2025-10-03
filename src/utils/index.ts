@@ -1,4 +1,4 @@
-import { Article } from './types';
+import { Article } from '../types';
 
 /**
  * Transforms raw article data from API/WebSocket to properly typed Article object

@@ -1,6 +1,6 @@
-import { ApiClient } from './apiClient';
-import { GetArticleApiResponse, GetArticlesParams } from './types';
-import { transformArticles } from './utils';
+import { ApiClient } from '../client/apiClient';
+import { GetArticleApiResponse, GetArticlesParams } from '../types';
+import { transformArticles } from '../utils';
 
 /**
  * Service for fetching and managing financial news articles.
