@@ -17,6 +17,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "jest",
+    "test:unit": "jest",
+    "test:integration": "jest --runInBand --testPathIgnorePatterns='/node_modules/' --testMatch='**/*.integration.test.ts'",
+    "test:integration:api": "jest --runInBand --testPathIgnorePatterns='/node_modules/' --testMatch='**/api.integration.test.ts'",
+    "test:integration:ws": "jest --runInBand --testPathIgnorePatterns='/node_modules/' --testMatch='**/websocket.integration.test.ts'",
+    "test:all": "jest --runInBand --testPathIgnorePatterns='/node_modules/'",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "prepublishOnly": "npm run build"
