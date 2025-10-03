@@ -123,7 +123,6 @@ export class WebSocketClient {
             reject(error);
           });
         });
-
       } catch (error) {
         console.error('❌ Connection error:', error);
 
