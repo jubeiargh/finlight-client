@@ -1,10 +1,13 @@
 import axios, { AxiosInstance } from 'axios';
-import { ApiClientConfig } from './config';
+import { ApiClientConfig } from '../types';
+import { Logger, createLogger } from '../logger';
 
 export class ApiClient {
   private client: AxiosInstance;
+  private readonly log: Logger;
 
   constructor(private config: ApiClientConfig) {
+    this.log = createLogger(config.logger ?? console, config.logLevel ?? 'info');
     this.client = axios.create({
       baseURL: config.baseUrl,
       timeout: config.timeout,
@@ -29,12 +32,13 @@ export class ApiClient {
 
         // Exit if max retries are reached or the error is non-retryable
         if (attempts === maxRetries || !this.isRetryableError(error)) {
+          this.log.error?.('Request failed:', error);
           throw error;
         }
 
         // Wait for some time before retrying
         const waitTime = this.calculateBackoff(attempts);
-        console.warn(`Retrying (${attempts}/${maxRetries}) after ${waitTime}ms:`, (error as Error).message);
+        this.log.warn?.(`Retrying (${attempts}/${maxRetries}) after ${waitTime}ms:`, (error as Error).message);
         await this.delay(waitTime);
       }
     }

@@ -1,6 +1,6 @@
 {
   "name": "finlight-client",
-  "version": "2.2.5",
+  "version": "3.0.0",
   "description": "Finlight.me client for API and WebSocket",
   "homepage": "https://finlight.me",
   "author": "Ali Büyükkakac",
@@ -17,6 +17,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "jest",
+    "test:unit": "jest",
+    "test:integration": "jest --runInBand --testPathIgnorePatterns='/node_modules/' --testMatch='**/*.integration.test.ts'",
+    "test:integration:api": "jest --runInBand --testPathIgnorePatterns='/node_modules/' --testMatch='**/api.integration.test.ts'",
+    "test:integration:ws": "jest --runInBand --testPathIgnorePatterns='/node_modules/' --testMatch='**/websocket.integration.test.ts'",
+    "test:all": "jest --runInBand --testPathIgnorePatterns='/node_modules/'",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "prepublishOnly": "npm run build"
@@ -28,6 +33,7 @@
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^24.2.0",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "7.14.1",
     "@typescript-eslint/parser": "7.14.1",
     "eslint": "8.57.0",
