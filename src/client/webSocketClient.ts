@@ -130,6 +130,14 @@ export class WebSocketClient {
       } catch (error) {
         console.error('❌ Connection error:', error);
 
+        // Check if this is a 429 rate limit error
+        if (error instanceof Error && error.message.includes('429')) {
+          // Use fixed delay for 429 responses since we can't get server retry timing
+          const retryAfterSeconds = 60; // Fixed 1 minute delay for capacity limits
+          this.reconnectAt = Date.now() + retryAfterSeconds * 1000;
+          console.warn(`⏰ Server rejected connection (429) - waiting ${retryAfterSeconds}s before retry`);
+        }
+
         if (!this._stop) {
           await this.handleReconnect();
         }
