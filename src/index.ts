@@ -10,6 +10,7 @@ export type * from './types/types';
 export { WebSocketResponse, WebSocketClientOptions } from './client/webSocketClient';
 export { WebhookService, WebhookVerificationError } from './services/webhookService';
 export { transformArticle, transformArticles } from './utils';
+export { Logger, LogLevel, noopLogger, createLogger } from './logger';
 
 export class FinlightApi {
   private apiClient: ApiClient;

@@ -1,6 +1,7 @@
 import WebSocket from 'ws';
 import { Article, GetArticlesWebSocketParams, ApiClientConfig } from '../types';
 import { transformArticle } from '../utils';
+import { Logger, createLogger } from '../logger';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const packageJson = require('../../package.json');
@@ -27,6 +28,7 @@ export class WebSocketClient {
   private pongWatchdog?: NodeJS.Timeout;
   private rotationTimeout?: NodeJS.Timeout;
   private _stop = false;
+  private readonly log: Logger;
 
   // Configuration
   private readonly pingIntervalMs: number;
@@ -49,6 +51,7 @@ export class WebSocketClient {
     private readonly config: ApiClientConfig,
     options: WebSocketClientOptions = {},
   ) {
+    this.log = createLogger(config.logger ?? console, config.logLevel ?? 'info');
     this.pingIntervalMs = (options.pingInterval ?? 25) * 1000;
     this.pongTimeoutMs = (options.pongTimeout ?? 60) * 1000;
     this.baseReconnectDelayMs = (options.baseReconnectDelay ?? 0.5) * 1000;
@@ -59,7 +62,7 @@ export class WebSocketClient {
     this.currentReconnectDelayMs = this.baseReconnectDelayMs;
 
     process.on('SIGINT', () => {
-      console.log('Caught interrupt signal. Shutting down gracefully...');
+      this.log.info?.('Caught interrupt signal. Shutting down gracefully...');
       this.stop();
       process.exit();
     });
@@ -71,13 +74,13 @@ export class WebSocketClient {
   ): Promise<void> {
     while (!this._stop) {
       try {
-        console.log('🔄 Attempting to connect...');
+        this.log.info?.('🔄 Attempting to connect...');
 
         // Prepare headers
         const headers: Record<string, string> = { 'x-api-key': this.config.apiKey, 'x-client-version': CLIENT_VERSION };
         if (this.takeover) {
           headers['x-takeover'] = 'true';
-          console.log('🔄 Connecting with takeover=true');
+          this.log.info?.('🔄 Connecting with takeover=true');
         }
 
         this.webSocket = new WebSocket(this.config.wssUrl, { headers });
@@ -86,7 +89,7 @@ export class WebSocketClient {
           if (!this.webSocket) return reject(new Error('WebSocket not initialized'));
 
           this.webSocket.on('open', () => {
-            console.log('✅ Connected.');
+            this.log.info?.('✅ Connected.');
 
             // Reset backoff on successful connection
             this.resetBackoff();
@@ -119,19 +122,19 @@ export class WebSocketClient {
           });
 
           this.webSocket.on('error', (error) => {
-            console.error('❌ Connection error:', error);
+            this.log.error?.('❌ Connection error:', error);
             reject(error);
           });
         });
       } catch (error) {
-        console.error('❌ Connection error:', error);
+        this.log.error?.('❌ Connection error:', error);
 
         // Check if this is a 429 rate limit error
         if (error instanceof Error && error.message.includes('429')) {
           // Use fixed delay for 429 responses since we can't get server retry timing
           const retryAfterSeconds = 60; // Fixed 1 minute delay for capacity limits
           this.reconnectAt = Date.now() + retryAfterSeconds * 1000;
-          console.warn(`⏰ Server rejected connection (429) - waiting ${retryAfterSeconds}s before retry`);
+          this.log.warn?.(`⏰ Server rejected connection (429) - waiting ${retryAfterSeconds}s before retry`);
         }
 
         if (!this._stop) {
@@ -149,23 +152,23 @@ export class WebSocketClient {
         const pingTime = msg.t;
         if (pingTime) {
           const rtt = Date.now() - pingTime;
-          console.debug(`← PONG received (RTT: ${rtt}ms)`);
+          this.log.debug?.(`← PONG received (RTT: ${rtt}ms)`);
         } else {
-          console.debug('← PONG received');
+          this.log.debug?.('← PONG received');
         }
         this.lastPongTime = Date.now();
       } else if (msgAction === 'admit') {
         this.leaseId = msg.leaseId;
         const serverNow = msg.serverNow;
         const clientNonce = msg.clientNonce;
-        console.log(`✅ Admitted (leaseId: ${this.leaseId}, serverNow: ${serverNow})`);
+        this.log.info?.(`✅ Admitted (leaseId: ${this.leaseId}, serverNow: ${serverNow})`);
         if (clientNonce && clientNonce !== this.clientNonce) {
-          console.warn(`⚠️ Nonce mismatch: expected ${this.clientNonce}, got ${clientNonce}`);
+          this.log.warn?.(`⚠️ Nonce mismatch: expected ${this.clientNonce}, got ${clientNonce}`);
         }
       } else if (msgAction === 'preempted') {
         const reason = msg.reason || 'unknown';
         const newLeaseId = msg.newLeaseId || '';
-        console.warn(`🔄 Connection preempted: ${reason} (new lease: ${newLeaseId})`);
+        this.log.warn?.(`🔄 Connection preempted: ${reason} (new lease: ${newLeaseId})`);
         // Stop reconnecting - this connection was legitimately replaced
         this._stop = true;
         this.webSocket?.close(1000, 'Preempted by server');
@@ -177,12 +180,12 @@ export class WebSocketClient {
         const retryAfter = msg.retryAfter || 900000; // 15 minutes default
         const retryAfterSeconds = retryAfter / 1000;
         this.reconnectAt = Date.now() + retryAfter;
-        console.warn(`🚫 Admin kicked - retry after ${retryAfterSeconds}s`);
+        this.log.warn?.(`🚫 Admin kicked - retry after ${retryAfterSeconds}s`);
         // Close with custom code and let reconnect logic handle the delay
         this.webSocket?.close(4003, `Admin kick - retry after ${retryAfter}ms`);
       } else if (msgAction === 'error') {
         const errorData = msg.data || msg.error || 'Unknown error';
-        console.error(`❌ Server error: ${errorData}`);
+        this.log.error?.(`❌ Server error: ${errorData}`);
 
         // Check if it's a rate limit or blocked error
         if (String(errorData).toLowerCase().includes('limit')) {
@@ -195,17 +198,17 @@ export class WebSocketClient {
           this.webSocket?.close(4002, 'User blocked');
         }
       } else {
-        console.warn(`⚠️ Unknown message action: ${msgAction}`);
-        console.debug(msg);
+        this.log.warn?.(`⚠️ Unknown message action: ${msgAction}`);
+        this.log.debug?.(msg);
       }
     } catch (error) {
-      console.error('❌ Error handling message:', error);
-      console.debug(`Raw message: ${message}`);
+      this.log.error?.('❌ Error handling message:', error);
+      this.log.debug?.(`Raw message: ${message}`);
     }
   }
 
   private handleClose(code: number, reason: string): void {
-    console.log(`🔌 Connection closed: ${code} - ${reason}`);
+    this.log.info?.(`🔌 Connection closed: ${code} - ${reason}`);
 
     this.clearTimers();
 
@@ -213,28 +216,28 @@ export class WebSocketClient {
       try {
         this.onClose(code, reason);
       } catch (callbackError) {
-        console.error('❌ Close callback error:', callbackError);
+        this.log.error?.('❌ Close callback error:', callbackError);
       }
     }
 
     // Handle specific close codes for reconnection logic
     if (code === 1008) {
       // Policy violation (blocked user)
-      console.warn('🚫 Connection rejected by server (blocked user)');
+      this.log.warn?.('🚫 Connection rejected by server (blocked user)');
       this._stop = true; // Stop reconnecting
     } else if (code === 1013) {
       // Try again later (rate limited)
-      console.warn('⏰ Rate limited, waiting before reconnect...');
+      this.log.warn?.('⏰ Rate limited, waiting before reconnect...');
       // The main loop will handle reconnect delay
     } else if (code === 4001) {
       // Custom: Rate limited
-      console.warn('⏰ Rate limited - custom close code');
+      this.log.warn?.('⏰ Rate limited - custom close code');
     } else if (code === 4002) {
       // Custom: User blocked
-      console.warn('🚫 User blocked - custom close code');
+      this.log.warn?.('🚫 User blocked - custom close code');
     } else if (code === 4003) {
       // Custom: Admin kick
-      console.warn('👮 Admin kick - custom close code');
+      this.log.warn?.('👮 Admin kick - custom close code');
     }
 
     if (!this._stop) {
@@ -245,12 +248,12 @@ export class WebSocketClient {
   private startPingInterval(): void {
     this.pingInterval = setInterval(() => {
       if (this.webSocket?.readyState !== WebSocket.OPEN) {
-        console.debug('WebSocket is not open. Skipping ping.');
+        this.log.debug?.('WebSocket is not open. Skipping ping.');
         return;
       }
 
       const pingTime = Date.now();
-      console.debug(`→ Sending ping (t=${pingTime})`);
+      this.log.debug?.(`→ Sending ping (t=${pingTime})`);
       this.webSocket?.send(JSON.stringify({ action: 'ping', t: pingTime }));
     }, this.pingIntervalMs);
   }
@@ -258,7 +261,7 @@ export class WebSocketClient {
   private startPongWatchdog(): void {
     this.pongWatchdog = setInterval(() => {
       if (Date.now() - this.lastPongTime > this.pongTimeoutMs) {
-        console.warn('❌ No pong received in time — forcing reconnect.');
+        this.log.warn?.('❌ No pong received in time — forcing reconnect.');
         this.webSocket?.close();
       }
     }, 5000); // Check every 5 seconds
@@ -267,7 +270,9 @@ export class WebSocketClient {
   private startProactiveRotation(): void {
     this.rotationTimeout = setTimeout(() => {
       const connectionAge = Date.now() - this.connectionStartTime;
-      console.log(`🔄 Proactive rotation after ${(connectionAge / 60000).toFixed(1)} minutes (before 2h AWS limit)`);
+      this.log.info?.(
+        `🔄 Proactive rotation after ${(connectionAge / 60000).toFixed(1)} minutes (before 2h AWS limit)`,
+      );
 
       // Gracefully close the connection with custom code
       this.webSocket?.close(4000, 'Proactive rotation');
@@ -280,11 +285,11 @@ export class WebSocketClient {
     // Check if we need to wait due to rate limits/blocks
     if (this.reconnectAt && now < this.reconnectAt) {
       const waitTime = (this.reconnectAt - now) / 1000;
-      console.log(`⏰ Waiting ${waitTime.toFixed(1)}s until reconnectAt before attempting reconnect`);
+      this.log.info?.(`⏰ Waiting ${waitTime.toFixed(1)}s until reconnectAt before attempting reconnect`);
       await this.sleep(this.reconnectAt - now);
     } else {
       // Regular exponential backoff
-      console.log(`🔁 Reconnecting in ${(this.currentReconnectDelayMs / 1000).toFixed(1)}s...`);
+      this.log.info?.(`🔁 Reconnecting in ${(this.currentReconnectDelayMs / 1000).toFixed(1)}s...`);
       await this.sleep(this.currentReconnectDelayMs);
 
       // Increase delay for next time (exponential backoff)
