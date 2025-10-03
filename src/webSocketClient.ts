@@ -3,6 +3,10 @@ import { Article, GetArticlesWebSocketParams } from './types';
 import { ApiClientConfig } from './config';
 import { transformArticle } from './utils';
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const packageJson = require('../package.json');
+const CLIENT_VERSION = `typescript/${packageJson.name}@${packageJson.version}`;
+
 export type WebSocketResponse<T> = {
   action: string;
   data: T;
@@ -71,7 +75,7 @@ export class WebSocketClient {
         console.log('🔄 Attempting to connect...');
 
         // Prepare headers
-        const headers: Record<string, string> = { 'x-api-key': this.config.apiKey };
+        const headers: Record<string, string> = { 'x-api-key': this.config.apiKey, 'x-client-version': CLIENT_VERSION };
         if (this.takeover) {
           headers['x-takeover'] = 'true';
           console.log('🔄 Connecting with takeover=true');
