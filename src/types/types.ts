@@ -98,6 +98,7 @@ export interface GetArticlesParams {
   order?: 'ASC' | 'DESC'; // Sort order
   pageSize?: number; // Results per page (1-1000)
   page?: number; // Page number
+  countries?: string[]; // ISO 3166-1 alpha-2 country codes
 }
 
 export interface GetArticlesWebSocketParams {
@@ -132,6 +133,8 @@ export interface GetArticlesWebSocketParams {
 
   //  whether to include content
   includeContent?: boolean;
+
+  countries?: string[]; // ISO 3166-1 alpha-2 country codes
 }
 
 export interface Source {

@@ -55,6 +55,7 @@ const api = new FinlightApi({
 const response = await api.articles.fetchArticles({
   query: '(ticker:AAPL OR ticker:TSLA) AND "earnings"',
   tickers: ['AAPL', 'TSLA'],
+  countries: ['US'],
   language: 'en',
   pageSize: 10,
   includeEntities: true,
@@ -246,6 +247,7 @@ interface GetArticlesParams {
   sources?: string[];            // Limit to specific sources
   excludeSources?: string[];     // Exclude specific sources
   optInSources?: string[];       // Additional sources to include
+  countries?: string[];          // Filter by country codes: ['US', 'GB']
   includeContent?: boolean;      // Include full article content
   includeEntities?: boolean;     // Include tagged company data
   excludeEmptyContent?: boolean; // Skip articles with no content
@@ -268,6 +270,7 @@ interface GetArticlesWebSocketParams {
   sources?: string[];
   excludeSources?: string[];
   optInSources?: string[];
+  countries?: string[];          // Filter by country codes: ['US', 'GB']
   includeContent?: boolean;
   includeEntities?: boolean;
   excludeEmptyContent?: boolean;

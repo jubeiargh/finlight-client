@@ -11,7 +11,7 @@ export class ArticleService {
   /**
    * Fetches financial news articles based on the provided search parameters.
    *
-   * Supports advanced filtering by tickers, sources, dates, and custom queries.
+   * Supports advanced filtering by tickers, sources, dates, countries, and custom queries.
    * Articles are returned with metadata including sentiment, company tags, and content.
    *
    * @param params - Search parameters for filtering articles
@@ -20,6 +20,7 @@ export class ArticleService {
    * @param params.tickers - Filter by company tickers (e.g., ['AAPL', 'NVDA'])
    * @param params.sources - Limit to specific news sources (overrides default source set)
    * @param params.excludeSources - Sources to exclude from results
+   * @param params.countries - Filter by country codes (e.g., ['US', 'GB'])
    * @param params.from - Start date in YYYY-MM-DD format or ISO date string
    * @param params.to - End date in YYYY-MM-DD format or ISO date string
    * @param params.includeContent - Whether to include full article content
@@ -35,6 +36,7 @@ export class ArticleService {
    * ```typescript
    * const response = await articleService.fetchArticles({
    *   tickers: ['AAPL'],
+   *   countries: ['US'],
    *   from: '2024-01-01',
    *   includeContent: true,
    *   pageSize: 20
