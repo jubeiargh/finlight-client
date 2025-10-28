@@ -1,6 +1,6 @@
 {
   "name": "finlight-client",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Finlight.me client for API and WebSocket",
   "homepage": "https://finlight.me",
   "author": "Ali Büyükkakac",
