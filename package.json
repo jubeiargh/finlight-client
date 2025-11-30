@@ -1,6 +1,6 @@
 {
   "name": "finlight-client",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "description": "Finlight.me client for API and WebSocket",
   "homepage": "https://finlight.me",
   "author": "Ali Büyükkakac",
@@ -15,6 +15,7 @@
   ],
   "license": "MIT",
   "scripts": {
+    "prebuild": "node scripts/update-version.js",
     "build": "tsc -p tsconfig.build.json",
     "test": "jest",
     "test:unit": "jest",
