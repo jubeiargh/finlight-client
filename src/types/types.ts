@@ -11,6 +11,7 @@ export interface Article {
   images?: string[];
   content?: string;
   companies?: Company[];
+  createdAt?: Date;
 }
 
 export interface Listing {
