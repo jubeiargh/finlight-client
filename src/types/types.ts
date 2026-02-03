@@ -137,6 +137,33 @@ export interface GetArticlesWebSocketParams {
   countries?: string[]; // ISO 3166-1 alpha-2 country codes
 }
 
+export interface GetRawArticlesWebSocketParams {
+  query?: string;
+  /**
+   * Limit search to sources. Will overwrite default source set.
+   */
+  sources?: string[];
+  /**
+   * Sources to exclude from results
+   */
+  excludeSources?: string[];
+  /**
+   * Which sources should be taken additionally to the default sources set
+   */
+  optInSources?: string[];
+  language?: string; // Language, default is "en"
+}
+
+export interface RawArticle {
+  link: string;
+  title: string;
+  publishDate: Date;
+  source: string;
+  language: string;
+  summary?: string;
+  images?: string[];
+}
+
 export interface Source {
   domain: string;
   isContentAvailable: boolean;
