@@ -12,6 +12,10 @@ export function transformArticle(rawArticle: any): Article {
     article.publishDate = new Date(article.publishDate);
   }
 
+  if (article.createdAt) {
+    article.createdAt = new Date(article.createdAt);
+  }
+
   // Convert company confidence from string to number if present
   if (article.companies && Array.isArray(article.companies)) {
     article.companies = article.companies.map((company: any) => ({

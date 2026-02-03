@@ -129,5 +129,7 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
+# Auto-generated files
+src/version.ts
 
 test.ts

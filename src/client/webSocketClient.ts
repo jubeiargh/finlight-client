@@ -2,10 +2,7 @@ import WebSocket from 'ws';
 import { Article, GetArticlesWebSocketParams, ApiClientConfig } from '../types';
 import { transformArticle } from '../utils';
 import { Logger, createLogger } from '../logger';
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const packageJson = require('../../package.json');
-const CLIENT_VERSION = `typescript/${packageJson.name}@${packageJson.version}`;
+import { CLIENT_VERSION } from '../version';
 
 export type WebSocketResponse<T> = {
   action: string;
@@ -29,6 +26,8 @@ export class WebSocketClient {
   private rotationTimeout?: NodeJS.Timeout;
   private _stop = false;
   private readonly log: Logger;
+  private recentArticleLinks = new Set<string>();
+  private readonly RECENT_ARTICLE_CACHE_SIZE = 10;
 
   // Configuration
   private readonly pingIntervalMs: number;
@@ -56,7 +55,7 @@ export class WebSocketClient {
     this.pongTimeoutMs = (options.pongTimeout ?? 60) * 1000;
     this.baseReconnectDelayMs = (options.baseReconnectDelay ?? 0.5) * 1000;
     this.maxReconnectDelayMs = (options.maxReconnectDelay ?? 10.0) * 1000;
-    this.connectionLifetimeMs = (options.connectionLifetime ?? 115 * 60) * 1000;
+    this.connectionLifetimeMs = (options.connectionLifetime ?? 115) * 60 * 1000;
     this.onClose = options.onClose;
     this.takeover = options.takeover ?? false;
     this.currentReconnectDelayMs = this.baseReconnectDelayMs;
@@ -175,6 +174,22 @@ export class WebSocketClient {
       } else if (msgAction === 'sendArticle') {
         const data = msg.data || {};
         const transformedArticle = transformArticle(data);
+
+        // Skip if it's a duplicate article (e.g., last article resent on reconnect)
+        if (this.recentArticleLinks.has(transformedArticle.link)) {
+          this.log.debug?.(`⏭️ Skipping duplicate article: ${transformedArticle.link}`);
+          return;
+        }
+
+        // Track this article ID
+        this.recentArticleLinks.add(transformedArticle.link);
+
+        // Maintain cache size by removing oldest entry when limit is reached
+        if (this.recentArticleLinks.size > this.RECENT_ARTICLE_CACHE_SIZE) {
+          const firstLink = this.recentArticleLinks.values().next().value;
+          this.recentArticleLinks.delete(firstLink!);
+        }
+
         onArticle(transformedArticle);
       } else if (msgAction === 'admin_kick') {
         const retryAfter = msg.retryAfter || 900000; // 15 minutes default
