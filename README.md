@@ -5,7 +5,7 @@ The **finlight API Client** is a modern TypeScript SDK for accessing the [finlig
 ## ✨ Features
 
 - 🔎 Advanced article search with flexible query language
-- 🔌 Real-time article streaming via WebSocket
+- 🔌 Real-time article streaming via Enhanced and Raw WebSocket
 - 💡 Full support for company tagging and content filters
 - 🔁 Built-in retries and automatic reconnection
 - 🔐 Secure API key authentication
@@ -110,6 +110,41 @@ client.websocket.connect(
 client.websocket.stop();
 ```
 
+### Raw WebSocket - Subscribe to Live Articles
+
+The Raw WebSocket delivers articles faster by skipping AI enrichment (no sentiment, confidence, or company tagging). It connects to `wss://wss.finlight.me/raw`.
+
+```ts
+const client = new FinlightApi(
+  {
+    apiKey: 'your-api-key',
+    logger: console,
+    logLevel: 'info',
+  },
+  {},  // Enhanced WebSocket options (use defaults)
+  {
+    // Raw WebSocket-specific options
+    takeover: true,
+  }
+);
+
+client.rawWebsocket.connect(
+  {
+    query: 'title:Nvidia',
+    sources: ['reuters.com'],
+    language: 'en',
+  },
+  (article) => {
+    console.log('Raw article:', article);
+  },
+);
+
+// To disconnect
+client.rawWebsocket.stop();
+```
+
+**Raw WebSocket query fields:** The raw WebSocket supports field-level filtering with `source:`, `title:`, and `summary:` fields (unlike the enhanced WebSocket which also supports `ticker:`, `country:`, `exchange:`, etc.).
+
 ---
 
 ## 🔔 Webhook Support
@@ -160,10 +195,13 @@ const api = new FinlightApi({
 
 ### WebSocket Options
 
+Both the Enhanced and Raw WebSocket clients accept the same options:
+
 ```ts
 const api = new FinlightApi(
   { apiKey: 'your-api-key' },
   {
+    // Enhanced WebSocket options
     pingInterval: 25,            // Heartbeat interval in seconds (default: 25)
     pongTimeout: 60,             // Pong timeout in seconds (default: 60)
     baseReconnectDelay: 0.5,     // Initial reconnect delay in seconds (default: 0.5)
@@ -172,6 +210,10 @@ const api = new FinlightApi(
     onClose: (code, reason) => { // Custom close handler
       console.log('Closed:', code, reason);
     },
+  },
+  {
+    // Raw WebSocket options (same structure)
+    takeover: true,
   }
 );
 ```
@@ -278,6 +320,18 @@ interface GetArticlesWebSocketParams {
 }
 ```
 
+### `GetRawArticlesWebSocketParams`
+
+```ts
+interface GetRawArticlesWebSocketParams {
+  query?: string;                // Field filters: source:, title:, summary:
+  sources?: string[];            // Limit to specific sources
+  excludeSources?: string[];     // Exclude specific sources
+  optInSources?: string[];       // Additional sources to include
+  language?: string;             // Language filter (default: 'en')
+}
+```
+
 ### `Article`
 
 ```ts
@@ -293,6 +347,20 @@ interface Article {
   images?: string[];
   content?: string;
   companies?: Company[];
+}
+```
+
+### `RawArticle`
+
+```ts
+interface RawArticle {
+  link: string;
+  title: string;
+  publishDate: Date;
+  source: string;
+  language: string;
+  summary?: string;
+  images?: string[];
 }
 ```
 
