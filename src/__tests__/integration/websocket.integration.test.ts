@@ -324,3 +324,190 @@ describe('WebSocket Integration Tests', () => {
     );
   });
 });
+
+describe('RawWebSocket Integration Tests', () => {
+  if (!API_KEY) {
+    it.skip('Skipping integration tests - FINLIGHT_API_KEY not set', () => {
+      console.warn('⚠️  Set FINLIGHT_API_KEY environment variable to run integration tests');
+    });
+    return;
+  }
+
+  let client: FinlightApi;
+
+  afterEach(() => {
+    // Always cleanup after each test, even if it fails
+    if (client && client.rawWebsocket) {
+      client.rawWebsocket.stop();
+    }
+  });
+
+  describe('Basic Connection', () => {
+    it(
+      'should successfully connect to Raw WebSocket endpoint',
+      async () => {
+        const mockInfo = jest.fn();
+
+        client = new FinlightApi({
+          apiKey: API_KEY!,
+          logger: {
+            debug: console.debug,
+            info: mockInfo,
+            warn: console.warn,
+            error: console.error,
+          },
+          logLevel: 'info',
+        });
+
+        void client.rawWebsocket.connect({}, () => {});
+
+        // Wait for connection
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+
+        // Check for successful connection with [Raw] prefix
+        const connectedCalls = mockInfo.mock.calls.filter((call) =>
+          call.some((arg) => String(arg).includes('[Raw] Connected.')),
+        );
+
+        expect(connectedCalls.length).toBeGreaterThan(0);
+      },
+      TEST_TIMEOUT,
+    );
+
+    it(
+      'should receive ping/pong messages with [Raw] prefix',
+      async () => {
+        const mockDebug = jest.fn();
+
+        client = new FinlightApi({
+          apiKey: API_KEY!,
+          logger: {
+            debug: mockDebug,
+            info: console.info,
+            warn: console.warn,
+            error: console.error,
+          },
+          logLevel: 'debug',
+        });
+
+        void client.rawWebsocket.connect({}, () => {});
+
+        // Wait for at least one ping/pong cycle
+        await new Promise((resolve) => setTimeout(resolve, 30000));
+
+        // Check if PONG was received with [Raw] prefix
+        const pongCalls = mockDebug.mock.calls.filter((call) =>
+          call.some((arg) => String(arg).includes('[Raw] PONG received')),
+        );
+
+        expect(pongCalls.length).toBeGreaterThan(0);
+      },
+      TEST_TIMEOUT,
+    );
+  });
+
+  describe('Connection Management', () => {
+    it(
+      'should handle manual disconnect gracefully',
+      async () => {
+        const mockInfo = jest.fn();
+
+        client = new FinlightApi({
+          apiKey: API_KEY!,
+          logger: {
+            debug: console.debug,
+            info: mockInfo,
+            warn: console.warn,
+            error: console.error,
+          },
+          logLevel: 'info',
+        });
+
+        let messageCount = 0;
+
+        void client.rawWebsocket.connect({}, () => {
+          messageCount++;
+        });
+
+        // Wait for connection
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+
+        // Verify connection was established
+        const connectedCalls = mockInfo.mock.calls.filter((call) =>
+          call.some((arg) => String(arg).includes('[Raw] Connected.')),
+        );
+        expect(connectedCalls.length).toBeGreaterThan(0);
+
+        // Disconnect
+        client.rawWebsocket.stop();
+
+        // Wait a moment
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        // Verify connection was closed
+        const closedCalls = mockInfo.mock.calls.filter((call) =>
+          call.some((arg) => String(arg).includes('[Raw] Connection closed')),
+        );
+        expect(closedCalls.length).toBeGreaterThan(0);
+
+        // Should not receive new messages after disconnect
+        const messagesBeforeStop = messageCount;
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        expect(messageCount).toBe(messagesBeforeStop);
+      },
+      TEST_TIMEOUT,
+    );
+
+    it(
+      'should verify base class shared functionality',
+      async () => {
+        const mockInfoRegular = jest.fn();
+        const mockInfoRaw = jest.fn();
+
+        const regularClient = new FinlightApi({
+          apiKey: API_KEY!,
+          logger: {
+            debug: console.debug,
+            info: mockInfoRegular,
+            warn: console.warn,
+            error: console.error,
+          },
+          logLevel: 'info',
+        });
+
+        const rawClient = new FinlightApi({
+          apiKey: API_KEY!,
+          logger: {
+            debug: console.debug,
+            info: mockInfoRaw,
+            warn: console.warn,
+            error: console.error,
+          },
+          logLevel: 'info',
+        });
+
+        // Start both connections
+        void regularClient.websocket.connect({ query: 'Tesla', tickers: ['TSLA'] }, () => {});
+        void rawClient.rawWebsocket.connect({}, () => {});
+
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+
+        // Verify both connected (checking for the connection messages)
+        const regularConnected = mockInfoRegular.mock.calls.some((call) =>
+          call.some((arg) => String(arg).includes('Connected.') && !String(arg).includes('[Raw]')),
+        );
+        const rawConnected = mockInfoRaw.mock.calls.some((call) =>
+          call.some((arg) => String(arg).includes('[Raw] Connected.')),
+        );
+
+        expect(regularConnected).toBe(true);
+        expect(rawConnected).toBe(true);
+
+        // Cleanup
+        regularClient.websocket.stop();
+        rawClient.rawWebsocket.stop();
+      },
+      TEST_TIMEOUT,
+    );
+  });
+});
