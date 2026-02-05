@@ -2,10 +2,8 @@ import { RawArticle, GetRawArticlesWebSocketParams, ApiClientConfig } from '../t
 import { transformRawArticle } from '../utils';
 import { BaseWebSocketClient, BaseWebSocketClientOptions } from './baseWebSocketClient';
 
-export interface RawWebSocketClientOptions extends BaseWebSocketClientOptions {}
-
 export class RawWebSocketClient extends BaseWebSocketClient<RawArticle, GetRawArticlesWebSocketParams> {
-  constructor(config: ApiClientConfig, options: RawWebSocketClientOptions = {}) {
+  constructor(config: ApiClientConfig, options: BaseWebSocketClientOptions = {}) {
     super(config, options);
   }
 
