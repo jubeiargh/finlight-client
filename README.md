@@ -40,8 +40,8 @@ const api = new FinlightApi({
 ```ts
 const api = new FinlightApi({
   apiKey: 'your-api-key',
-  logger: console,      // Use console, winston, pino, or custom
-  logLevel: 'info',     // 'debug' | 'info' | 'warn' | 'error'
+  logger: console, // Use console, winston, pino, or custom
+  logLevel: 'info', // 'debug' | 'info' | 'warn' | 'error'
 });
 ```
 
@@ -89,8 +89,8 @@ const client = new FinlightApi(
   },
   {
     // WebSocket-specific options
-    takeover: false,          // takeover existing connections (default: false)
-  }
+    takeover: false, // takeover existing connections (default: false)
+  },
 );
 
 client.websocket.connect(
@@ -121,11 +121,10 @@ const client = new FinlightApi(
     logger: console,
     logLevel: 'info',
   },
-  {},  // Enhanced WebSocket options (use defaults)
   {
-    // Raw WebSocket-specific options
+    // WebSocket-specific options
     takeover: true,
-  }
+  },
 );
 
 client.rawWebsocket.connect(
@@ -163,7 +162,7 @@ app.post('/webhook', express.raw({ type: 'application/json' }), (req, res) => {
       req.body.toString(),
       req.headers['x-webhook-signature'] as string,
       process.env.WEBHOOK_SECRET!,
-      req.headers['x-webhook-timestamp'] as string
+      req.headers['x-webhook-timestamp'] as string,
     );
 
     console.log('New article:', article.title);
@@ -183,13 +182,13 @@ app.post('/webhook', express.raw({ type: 'application/json' }), (req, res) => {
 
 ```ts
 const api = new FinlightApi({
-  apiKey: 'your-api-key',                  // Required
-  baseUrl: 'https://api.finlight.me',      // Optional
-  wssUrl: 'wss://wss.finlight.me',         // Optional
-  timeout: 5000,                           // Request timeout in ms (default: 5000)
-  retryCount: 3,                           // Retry count (default: 3)
-  logger: console,                         // Logger instance (default: console)
-  logLevel: 'info',                        // Log level (default: 'info')
+  apiKey: 'your-api-key', // Required
+  baseUrl: 'https://api.finlight.me', // Optional
+  wssUrl: 'wss://wss.finlight.me', // Optional
+  timeout: 5000, // Request timeout in ms (default: 5000)
+  retryCount: 3, // Retry count (default: 3)
+  logger: console, // Logger instance (default: console)
+  logLevel: 'info', // Log level (default: 'info')
 });
 ```
 
@@ -201,20 +200,17 @@ Both the Enhanced and Raw WebSocket clients accept the same options:
 const api = new FinlightApi(
   { apiKey: 'your-api-key' },
   {
-    // Enhanced WebSocket options
-    pingInterval: 25,            // Heartbeat interval in seconds (default: 25)
-    pongTimeout: 60,             // Pong timeout in seconds (default: 60)
-    baseReconnectDelay: 0.5,     // Initial reconnect delay in seconds (default: 0.5)
-    maxReconnectDelay: 10,       // Max reconnect delay in seconds (default: 10)
-    takeover: false,             // Takeover existing connections (default: false)
-    onClose: (code, reason) => { // Custom close handler
+    // WebSocket options
+    pingInterval: 25, // Heartbeat interval in seconds (default: 25)
+    pongTimeout: 60, // Pong timeout in seconds (default: 60)
+    baseReconnectDelay: 0.5, // Initial reconnect delay in seconds (default: 0.5)
+    maxReconnectDelay: 10, // Max reconnect delay in seconds (default: 10)
+    takeover: false, // Takeover existing connections (default: false)
+    onClose: (code, reason) => {
+      // Custom close handler
       console.log('Closed:', code, reason);
     },
   },
-  {
-    // Raw WebSocket options (same structure)
-    takeover: true,
-  }
 );
 ```
 
@@ -272,7 +268,7 @@ const winstonLogger = winston.createLogger({
 
 const api = new FinlightApi({
   apiKey: 'key',
-  logger: winstonLogger,  // Pass winston/pino directly!
+  logger: winstonLogger, // Pass winston/pino directly!
 });
 ```
 
@@ -284,22 +280,22 @@ const api = new FinlightApi({
 
 ```ts
 interface GetArticlesParams {
-  query?: string;                // Advanced query: (ticker:AAPL OR ticker:NVDA)
-  tickers?: string[];            // Filter by tickers: ['AAPL', 'NVDA']
-  sources?: string[];            // Limit to specific sources
-  excludeSources?: string[];     // Exclude specific sources
-  optInSources?: string[];       // Additional sources to include
-  countries?: string[];          // Filter by country codes: ['US', 'GB']
-  includeContent?: boolean;      // Include full article content
-  includeEntities?: boolean;     // Include tagged company data
+  query?: string; // Advanced query: (ticker:AAPL OR ticker:NVDA)
+  tickers?: string[]; // Filter by tickers: ['AAPL', 'NVDA']
+  sources?: string[]; // Limit to specific sources
+  excludeSources?: string[]; // Exclude specific sources
+  optInSources?: string[]; // Additional sources to include
+  countries?: string[]; // Filter by country codes: ['US', 'GB']
+  includeContent?: boolean; // Include full article content
+  includeEntities?: boolean; // Include tagged company data
   excludeEmptyContent?: boolean; // Skip articles with no content
-  from?: string;                 // Start date (YYYY-MM-DD or ISO)
-  to?: string;                   // End date (YYYY-MM-DD or ISO)
-  language?: string;             // Language filter (default: 'en')
+  from?: string; // Start date (YYYY-MM-DD or ISO)
+  to?: string; // End date (YYYY-MM-DD or ISO)
+  language?: string; // Language filter (default: 'en')
   orderBy?: 'publishDate' | 'createdAt';
   order?: 'ASC' | 'DESC';
-  pageSize?: number;             // Results per page (1-1000)
-  page?: number;                 // Page number
+  pageSize?: number; // Results per page (1-1000)
+  page?: number; // Page number
 }
 ```
 
@@ -312,7 +308,7 @@ interface GetArticlesWebSocketParams {
   sources?: string[];
   excludeSources?: string[];
   optInSources?: string[];
-  countries?: string[];          // Filter by country codes: ['US', 'GB']
+  countries?: string[]; // Filter by country codes: ['US', 'GB']
   includeContent?: boolean;
   includeEntities?: boolean;
   excludeEmptyContent?: boolean;
@@ -324,11 +320,11 @@ interface GetArticlesWebSocketParams {
 
 ```ts
 interface GetRawArticlesWebSocketParams {
-  query?: string;                // Field filters: source:, title:, summary:
-  sources?: string[];            // Limit to specific sources
-  excludeSources?: string[];     // Exclude specific sources
-  optInSources?: string[];       // Additional sources to include
-  language?: string;             // Language filter (default: 'en')
+  query?: string; // Field filters: source:, title:, summary:
+  sources?: string[]; // Limit to specific sources
+  excludeSources?: string[]; // Exclude specific sources
+  optInSources?: string[]; // Additional sources to include
+  language?: string; // Language filter (default: 'en')
 }
 ```
 
@@ -339,6 +335,7 @@ interface Article {
   link: string;
   title: string;
   publishDate: Date;
+  createdAt?: Date;
   source: string;
   language: string;
   sentiment?: string;
@@ -357,6 +354,7 @@ interface RawArticle {
   link: string;
   title: string;
   publishDate: Date;
+  createdAt?: Date;
   source: string;
   language: string;
   summary?: string;
@@ -403,6 +401,7 @@ Retry behavior uses exponential backoff (500ms, 1000ms, 2000ms, etc.).
 ### WebSocket Reconnection
 
 On disconnection, the client automatically attempts to reconnect with:
+
 - Exponential backoff (0.5s → 1s → 2s → ... → 10s max)
 - Proactive connection rotation (every 115 minutes to avoid AWS 2-hour limit)
 - Rate limit and error handling with appropriate backoff
