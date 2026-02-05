@@ -7,10 +7,8 @@ export type WebSocketResponse<T> = {
   data: T;
 };
 
-export interface WebSocketClientOptions extends BaseWebSocketClientOptions {}
-
 export class WebSocketClient extends BaseWebSocketClient<Article, GetArticlesWebSocketParams> {
-  constructor(config: ApiClientConfig, options: WebSocketClientOptions = {}) {
+  constructor(config: ApiClientConfig, options: BaseWebSocketClientOptions = {}) {
     super(config, options);
   }
 
