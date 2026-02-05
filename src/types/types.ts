@@ -170,3 +170,12 @@ export interface Source {
   isContentAvailable: boolean;
   isDefaultSource: boolean;
 }
+
+export interface GetArticleByLinkParams {
+  /** The URL of the article to fetch */
+  link: string;
+  /** Whether to include full article content */
+  includeContent?: boolean;
+  /** Whether to include tagged company data */
+  includeEntities?: boolean;
+}

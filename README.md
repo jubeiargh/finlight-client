@@ -67,6 +67,18 @@ const response = await api.articles.fetchArticles({
 console.log(response.articles);
 ```
 
+### Fetch Article by Link
+
+```ts
+const article = await api.articles.fetchArticleByLink({
+  link: 'https://www.reuters.com/technology/example-article',
+  includeContent: true,
+  includeEntities: true,
+});
+
+console.log(article);
+```
+
 ### Fetch Sources
 
 ```ts
@@ -296,6 +308,16 @@ interface GetArticlesParams {
   order?: 'ASC' | 'DESC';
   pageSize?: number; // Results per page (1-1000)
   page?: number; // Page number
+}
+```
+
+### `GetArticleByLinkParams`
+
+```ts
+interface GetArticleByLinkParams {
+  link: string; // The URL of the article to fetch
+  includeContent?: boolean; // Include full article content
+  includeEntities?: boolean; // Include tagged company data
 }
 ```
 
