@@ -24,7 +24,7 @@ export class ApiClient {
         const response = await this.client.request<T>({
           method,
           url,
-          data,
+          ...(method === 'GET' ? { params: data } : { data }),
         });
         return response.data;
       } catch (error) {

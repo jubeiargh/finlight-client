@@ -1,6 +1,6 @@
 import { ApiClient } from '../client/apiClient';
-import { GetArticleApiResponse, GetArticlesParams } from '../types';
-import { transformArticles } from '../utils';
+import { Article, GetArticleApiResponse, GetArticleByLinkParams, GetArticlesParams } from '../types';
+import { transformArticle, transformArticles } from '../utils';
 
 /**
  * Service for fetching and managing financial news articles.
@@ -51,5 +51,30 @@ export class ArticleService {
       ...response,
       articles: transformArticles(response.articles),
     };
+  }
+
+  /**
+   * Fetches a single article by its URL.
+   *
+   * @param params - Parameters for fetching article by link
+   * @param params.link - The URL of the article to fetch
+   * @param params.includeContent - Whether to include full article content
+   * @param params.includeEntities - Whether to include tagged company data
+   *
+   * @returns Promise resolving to the article if found
+   *
+   * @throws {Error} If the API request fails or article is not found
+   *
+   * @example
+   * ```typescript
+   * const article = await articleService.fetchArticleByLink({
+   *   link: 'https://example.com/news/article',
+   *   includeContent: true
+   * });
+   * ```
+   */
+  async fetchArticleByLink(params: GetArticleByLinkParams): Promise<Article> {
+    const response = await this.apiClient.request<Article>('GET', '/v2/articles/by-link', params);
+    return transformArticle(response);
   }
 }
