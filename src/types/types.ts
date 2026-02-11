@@ -12,6 +12,8 @@ export interface Article {
   content?: string;
   companies?: Company[];
   createdAt?: Date;
+  categories?: string[];
+  countries?: string[];
 }
 
 export interface Listing {
@@ -44,6 +46,20 @@ export interface ApiResponse<T> {
 }
 export type GetArticleApiResponse = ApiResponse<Article>;
 
+export type ArticleCategories =
+  | 'markets'
+  | 'economy'
+  | 'business'
+  | 'politics'
+  | 'geopolitics'
+  | 'regulation'
+  | 'technology'
+  | 'energy'
+  | 'commodities'
+  | 'crypto'
+  | 'health'
+  | 'climate'
+  | 'security';
 // Types for Basic Article API
 export interface GetArticlesParams {
   /**
@@ -100,6 +116,7 @@ export interface GetArticlesParams {
   pageSize?: number; // Results per page (1-1000)
   page?: number; // Page number
   countries?: string[]; // ISO 3166-1 alpha-2 country codes
+  categories?: ArticleCategories[];
 }
 
 export interface GetArticlesWebSocketParams {
@@ -136,6 +153,7 @@ export interface GetArticlesWebSocketParams {
   includeContent?: boolean;
 
   countries?: string[]; // ISO 3166-1 alpha-2 country codes
+  categories?: ArticleCategories[];
 }
 
 export interface GetRawArticlesWebSocketParams {
