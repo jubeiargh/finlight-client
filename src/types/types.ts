@@ -12,6 +12,8 @@ export interface Article {
   content?: string;
   companies?: Company[];
   createdAt?: Date;
+  updatedAt?: Date;
+  isUpdate?: boolean;
   categories?: string[];
   countries?: string[];
 }
@@ -111,7 +113,7 @@ export interface GetArticlesParams {
    */
   to?: string;
   language?: string; // Language, default is "en"
-  orderBy?: 'publishDate' | 'createdAt'; // Order by
+  orderBy?: 'publishDate' | 'createdAt' | 'updatedAt'; // Order by
   order?: 'ASC' | 'DESC'; // Sort order
   pageSize?: number; // Results per page (1-1000)
   page?: number; // Page number
@@ -181,6 +183,7 @@ export interface RawArticle {
   language: string;
   summary?: string;
   images?: string[];
+  isUpdate?: boolean;
 }
 
 export interface Source {
