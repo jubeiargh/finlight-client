@@ -304,7 +304,7 @@ interface GetArticlesParams {
   from?: string; // Start date (YYYY-MM-DD or ISO)
   to?: string; // End date (YYYY-MM-DD or ISO)
   language?: string; // Language filter (default: 'en')
-  orderBy?: 'publishDate' | 'createdAt';
+  orderBy?: 'publishDate' | 'createdAt' | 'revisedDate';
   order?: 'ASC' | 'DESC';
   pageSize?: number; // Results per page (1-1000)
   page?: number; // Page number

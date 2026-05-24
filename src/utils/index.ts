@@ -16,8 +16,8 @@ export function transformArticle(rawArticle: any): Article {
     article.createdAt = new Date(article.createdAt);
   }
 
-  if (article.updatedAt) {
-    article.updatedAt = new Date(article.updatedAt);
+  if (article.revisedDate) {
+    article.revisedDate = new Date(article.revisedDate);
   }
 
   // Convert company confidence from string to number if present
