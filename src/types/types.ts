@@ -115,7 +115,7 @@ export interface GetArticlesParams {
   language?: string; // Language, default is "en"
   orderBy?: 'publishDate' | 'createdAt' | 'revisedDate'; // Order by
   order?: 'ASC' | 'DESC'; // Sort order
-  pageSize?: number; // Results per page (1-1000)
+  pageSize?: number; // Results per page (1-100)
   page?: number; // Page number
   countries?: string[]; // ISO 3166-1 alpha-2 country codes
   categories?: ArticleCategories[];
@@ -156,6 +156,8 @@ export interface GetArticlesWebSocketParams {
 
   countries?: string[]; // ISO 3166-1 alpha-2 country codes
   categories?: ArticleCategories[];
+  /** Re-deliver articles when they are revised after publication (adds isUpdate/revisedDate). */
+  includeUpdates?: boolean;
 }
 
 export interface GetRawArticlesWebSocketParams {
@@ -173,6 +175,8 @@ export interface GetRawArticlesWebSocketParams {
    */
   optInSources?: string[];
   language?: string; // Language, default is "en"
+  /** Re-deliver articles when they are revised after publication (adds isUpdate/revisedDate). */
+  includeUpdates?: boolean;
 }
 
 export interface RawArticle {
@@ -183,13 +187,24 @@ export interface RawArticle {
   language: string;
   summary?: string;
   images?: string[];
+  createdAt?: Date;
+  categories?: ArticleCategories[];
+  /** Present when includeUpdates is enabled and the article has been revised. */
+  revisedDate?: Date;
   isUpdate?: boolean;
 }
 
 export interface Source {
   domain: string;
-  isContentAvailable: boolean;
   isDefaultSource: boolean;
+  /** Only present on plans with full article content access. */
+  isContentAvailable?: boolean;
+  /** Origin country of the source (ISO 3166-1 alpha-2). */
+  originCountry?: string;
+  /** Languages the source publishes in (ISO 639-1), primary first. */
+  languages?: string[];
+  /** Present and true only when this is a custom source enabled for your subscription. */
+  isCustomSource?: boolean;
 }
 
 export interface GetArticleByLinkParams {

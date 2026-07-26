@@ -26,7 +26,7 @@ export class ArticleService {
    * @param params.includeContent - Whether to include full article content
    * @param params.includeEntities - Whether to include tagged company data
    * @param params.page - Page number for pagination
-   * @param params.pageSize - Number of results per page (1-1000)
+   * @param params.pageSize - Number of results per page (1-100)
    *
    * @returns Promise resolving to paginated article results with metadata
    *
