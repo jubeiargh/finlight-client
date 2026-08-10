@@ -39,7 +39,7 @@ export abstract class BaseWebSocketClient<TArticle, TRequestPayload> {
   private clientNonce?: string; // For idempotent handshake
 
   // Duplicate detection (optional, can be overridden by subclasses)
-  protected recentArticleLinks = new Set<string>();
+  protected recentArticleLinks: Set<string> = new Set<string>();
   protected readonly RECENT_ARTICLE_CACHE_SIZE = 10;
 
   constructor(

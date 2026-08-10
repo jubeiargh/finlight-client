@@ -1,0 +1,10 @@
+{
+  "name": "@finlight/client",
+  "version": "3.4.0",
+  "license": "MIT",
+  "exports": "./src/index.ts",
+  "publish": {
+    "include": ["src/**/*.ts", "README.md", "jsr.json"],
+    "exclude": ["src/__tests__/**", "!src/version.ts"]
+  }
+}
