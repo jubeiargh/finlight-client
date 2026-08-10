@@ -1,11 +1,11 @@
-name: Publish to npm
+name: Publish to npm and JSR
 
 on:
   release:
     types: [published]
 
 jobs:
-  publish:
+  publish-npm:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -21,3 +21,20 @@ jobs:
       - run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-jsr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Sync jsr.json version from package.json
+        run: node -e "const fs=require('fs');const p=require('./package.json');const j=JSON.parse(fs.readFileSync('jsr.json','utf8'));j.version=p.version;fs.writeFileSync('jsr.json',JSON.stringify(j,null,2)+'\n');"
+      - name: Generate src/version.ts
+        run: node scripts/update-version.js
+      - name: Publish to JSR (OIDC, no token)
+        run: npx jsr publish --allow-dirty
