@@ -1,23 +1,23 @@
 # finlight API Client
 
-*English | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)*
+*[English](README.md) | 简体中文 | [日本語](README.ja.md) | [한국어](README.ko.md)*
 
-The **finlight API Client** is a modern TypeScript SDK for accessing the [finlight.me](https://finlight.me) platform. It provides robust and fully-typed REST and WebSocket interfaces to fetch market-relevant news articles enriched with sentiment, metadata, and company tagging.
+**finlight API Client** 是用于对接 [finlight.me](https://finlight.me) 平台的现代 TypeScript SDK。它提供稳定且完整类型化的 REST 和 WebSocket 接口，用于获取带情感、元数据和公司实体标注的市场相关新闻。
 
-## ✨ Features
+## ✨ 功能特性
 
-- 🔎 Advanced article search with flexible query language
-- 🔌 Real-time article streaming via Enhanced and Raw WebSocket
-- 💡 Full support for company tagging and content filters
-- 🔁 Built-in retries and automatic reconnection
-- 🔐 Secure API key authentication
-- 📝 Configurable logging (console, winston, pino, custom)
-- 🔔 Webhook support with HMAC verification
-- ✅ Strong TypeScript types for better DX
+- 🔎 支持灵活查询语言的进阶文章检索
+- 🔌 通过 Enhanced 和 Raw WebSocket 订阅实时文章推送
+- 💡 完整支持公司实体标注和正文过滤
+- 🔁 内置重试与自动重连
+- 🔐 安全的 API 密钥认证
+- 📝 可配置日志（console、winston、pino、自定义）
+- 🔔 支持 Webhook，含 HMAC 验证
+- ✅ 完整的 TypeScript 类型，提升开发体验
 
 ---
 
-## 📦 Installation
+## 📦 安装
 
 ```bash
 npm install finlight-client
@@ -25,33 +25,33 @@ npm install finlight-client
 
 ---
 
-## 🚀 Quick Start
+## 🚀 快速开始
 
-### Initialize the Client
+### 初始化客户端
 
 ```ts
 import { FinlightApi } from 'finlight-client';
 
 const api = new FinlightApi({
-  apiKey: 'your-api-key', // Required
+  apiKey: 'your-api-key', // 必填
 });
 ```
 
-### With Custom Logging
+### 使用自定义日志
 
 ```ts
 const api = new FinlightApi({
   apiKey: 'your-api-key',
-  logger: console, // Use console, winston, pino, or custom
+  logger: console, // 可用 console、winston、pino 或自定义
   logLevel: 'info', // 'debug' | 'info' | 'warn' | 'error'
 });
 ```
 
 ---
 
-## 📘 REST API Usage
+## 📘 REST API 用法
 
-### Fetch Articles
+### 获取文章
 
 ```ts
 const response = await api.articles.fetchArticles({
@@ -69,7 +69,7 @@ const response = await api.articles.fetchArticles({
 console.log(response.articles);
 ```
 
-### Fetch Article by Link
+### 通过链接获取单篇文章
 
 ```ts
 const article = await api.articles.fetchArticleByLink({
@@ -81,7 +81,7 @@ const article = await api.articles.fetchArticleByLink({
 console.log(article);
 ```
 
-### Fetch Sources
+### 获取新闻源列表
 
 ```ts
 const sources = await api.sources.getSources();
@@ -90,9 +90,9 @@ console.log(sources);
 
 ---
 
-## 🔄 WebSocket Streaming
+## 🔄 WebSocket 流式订阅
 
-### Subscribe to Live Articles
+### 订阅实时文章
 
 ```ts
 const client = new FinlightApi(
@@ -102,8 +102,8 @@ const client = new FinlightApi(
     logLevel: 'info',
   },
   {
-    // WebSocket-specific options
-    takeover: false, // takeover existing connections (default: false)
+    // WebSocket 专用选项
+    takeover: false, // 接管已有连接（默认：false）
   },
 );
 
@@ -120,13 +120,13 @@ client.websocket.connect(
   },
 );
 
-// To disconnect
+// 断开连接
 client.websocket.stop();
 ```
 
-### Raw WebSocket - Subscribe to Live Articles
+### Raw WebSocket - 订阅实时文章
 
-The Raw WebSocket delivers articles faster by skipping AI enrichment (no sentiment, confidence, or company tagging). It connects to `wss://wss.finlight.me/raw`.
+Raw WebSocket 跳过 AI 增强处理（不含情感、置信度和公司标注），因此推送更快。它连接至 `wss://wss.finlight.me/raw`。
 
 ```ts
 const client = new FinlightApi(
@@ -136,7 +136,7 @@ const client = new FinlightApi(
     logLevel: 'info',
   },
   {
-    // WebSocket-specific options
+    // WebSocket 专用选项
     takeover: true,
   },
 );
@@ -152,17 +152,17 @@ client.rawWebsocket.connect(
   },
 );
 
-// To disconnect
+// 断开连接
 client.rawWebsocket.stop();
 ```
 
-**Raw WebSocket query fields:** The raw WebSocket supports field-level filtering with `source:`, `title:`, and `summary:` fields (unlike the enhanced WebSocket which also supports `ticker:`, `country:`, `exchange:`, etc.).
+**Raw WebSocket 查询字段：** Raw WebSocket 支持 `source:`、`title:` 和 `summary:` 字段级过滤（Enhanced WebSocket 还额外支持 `ticker:`、`country:`、`exchange:` 等字段）。
 
 ---
 
-## 🔔 Webhook Support
+## 🔔 Webhook 支持
 
-Securely receive webhook events from finlight with HMAC signature verification:
+通过 HMAC 签名验证安全地接收来自 finlight 的 Webhook 事件：
 
 ```ts
 import { WebhookService } from 'finlight-client';
@@ -190,38 +190,38 @@ app.post('/webhook', express.raw({ type: 'application/json' }), (req, res) => {
 
 ---
 
-## 🛠️ Configuration
+## 🛠️ 配置
 
-### Client Options
+### 客户端选项
 
 ```ts
 const api = new FinlightApi({
-  apiKey: 'your-api-key', // Required
-  baseUrl: 'https://api.finlight.me', // Optional
-  wssUrl: 'wss://wss.finlight.me', // Optional
-  timeout: 5000, // Request timeout in ms (default: 5000)
-  retryCount: 3, // Retry count (default: 3)
-  logger: console, // Logger instance (default: console)
-  logLevel: 'info', // Log level (default: 'info')
+  apiKey: 'your-api-key', // 必填
+  baseUrl: 'https://api.finlight.me', // 可选
+  wssUrl: 'wss://wss.finlight.me', // 可选
+  timeout: 5000, // 请求超时（毫秒，默认：5000）
+  retryCount: 3, // 重试次数（默认：3）
+  logger: console, // 日志实例（默认：console）
+  logLevel: 'info', // 日志级别（默认：'info'）
 });
 ```
 
-### WebSocket Options
+### WebSocket 选项
 
-Both the Enhanced and Raw WebSocket clients accept the same options:
+Enhanced 和 Raw WebSocket 客户端接受相同的选项：
 
 ```ts
 const api = new FinlightApi(
   { apiKey: 'your-api-key' },
   {
-    // WebSocket options
-    pingInterval: 25, // Heartbeat interval in seconds (default: 25)
-    pongTimeout: 60, // Pong timeout in seconds (default: 60)
-    baseReconnectDelay: 0.5, // Initial reconnect delay in seconds (default: 0.5)
-    maxReconnectDelay: 10, // Max reconnect delay in seconds (default: 10)
-    takeover: false, // Takeover existing connections (default: false)
+    // WebSocket 选项
+    pingInterval: 25, // 心跳间隔（秒，默认：25）
+    pongTimeout: 60, // Pong 超时（秒，默认：60）
+    baseReconnectDelay: 0.5, // 初始重连延迟（秒，默认：0.5）
+    maxReconnectDelay: 10, // 最大重连延迟（秒，默认：10）
+    takeover: false, // 接管已有连接（默认：false）
     onClose: (code, reason) => {
-      // Custom close handler
+      // 自定义关闭处理
       console.log('Closed:', code, reason);
     },
   },
@@ -230,20 +230,20 @@ const api = new FinlightApi(
 
 ---
 
-## 📝 Logging
+## 📝 日志
 
-### Built-in Loggers
+### 内置日志器
 
 ```ts
 import { FinlightApi, noopLogger } from 'finlight-client';
 
-// Silent mode
+// 静默模式
 const api = new FinlightApi({
   apiKey: 'key',
   logger: noopLogger,
 });
 
-// Console logging (default)
+// 控制台日志（默认）
 const api = new FinlightApi({
   apiKey: 'key',
   logger: console,
@@ -251,7 +251,7 @@ const api = new FinlightApi({
 });
 ```
 
-### Custom Logger
+### 自定义日志器
 
 ```ts
 import { Logger } from 'finlight-client';
@@ -269,7 +269,7 @@ const api = new FinlightApi({
 });
 ```
 
-### Winston/Pino Integration
+### 集成 Winston/Pino
 
 ```ts
 import winston from 'winston';
@@ -282,34 +282,34 @@ const winstonLogger = winston.createLogger({
 
 const api = new FinlightApi({
   apiKey: 'key',
-  logger: winstonLogger, // Pass winston/pino directly!
+  logger: winstonLogger, // 直接传入 winston/pino 实例即可
 });
 ```
 
 ---
 
-## 🧾 Types & Interfaces
+## 🧾 类型与接口
 
 ### `GetArticlesParams`
 
 ```ts
 interface GetArticlesParams {
-  query?: string; // Advanced query: (ticker:AAPL OR ticker:NVDA)
-  tickers?: string[]; // Filter by tickers: ['AAPL', 'NVDA']
-  sources?: string[]; // Limit to specific sources
-  excludeSources?: string[]; // Exclude specific sources
-  optInSources?: string[]; // Additional sources to include
-  countries?: string[]; // Filter by country codes: ['US', 'GB']
-  includeContent?: boolean; // Include full article content
-  includeEntities?: boolean; // Include tagged company data
-  excludeEmptyContent?: boolean; // Skip articles with no content
-  from?: string; // Start date (YYYY-MM-DD or ISO)
-  to?: string; // End date (YYYY-MM-DD or ISO)
-  language?: string; // Language filter (default: 'en')
+  query?: string; // 进阶查询：(ticker:AAPL OR ticker:NVDA)
+  tickers?: string[]; // 按股票代码过滤：['AAPL', 'NVDA']
+  sources?: string[]; // 限定特定新闻源
+  excludeSources?: string[]; // 排除特定新闻源
+  optInSources?: string[]; // 额外纳入的新闻源
+  countries?: string[]; // 按国家代码过滤：['US', 'GB']
+  includeContent?: boolean; // 返回文章全文
+  includeEntities?: boolean; // 返回标注的公司数据
+  excludeEmptyContent?: boolean; // 跳过无正文的文章
+  from?: string; // 起始日期（YYYY-MM-DD 或 ISO 格式）
+  to?: string; // 结束日期（YYYY-MM-DD 或 ISO 格式）
+  language?: string; // 语言过滤（默认：'en'）
   orderBy?: 'publishDate' | 'createdAt' | 'revisedDate';
   order?: 'ASC' | 'DESC';
-  pageSize?: number; // Results per page (1-1000)
-  page?: number; // Page number
+  pageSize?: number; // 每页条数（1-1000）
+  page?: number; // 页码
 }
 ```
 
@@ -317,9 +317,9 @@ interface GetArticlesParams {
 
 ```ts
 interface GetArticleByLinkParams {
-  link: string; // The URL of the article to fetch
-  includeContent?: boolean; // Include full article content
-  includeEntities?: boolean; // Include tagged company data
+  link: string; // 待获取文章的 URL
+  includeContent?: boolean; // 返回文章全文
+  includeEntities?: boolean; // 返回标注的公司数据
 }
 ```
 
@@ -332,7 +332,7 @@ interface GetArticlesWebSocketParams {
   sources?: string[];
   excludeSources?: string[];
   optInSources?: string[];
-  countries?: string[]; // Filter by country codes: ['US', 'GB']
+  countries?: string[]; // 按国家代码过滤：['US', 'GB']
   includeContent?: boolean;
   includeEntities?: boolean;
   excludeEmptyContent?: boolean;
@@ -344,11 +344,11 @@ interface GetArticlesWebSocketParams {
 
 ```ts
 interface GetRawArticlesWebSocketParams {
-  query?: string; // Field filters: source:, title:, summary:
-  sources?: string[]; // Limit to specific sources
-  excludeSources?: string[]; // Exclude specific sources
-  optInSources?: string[]; // Additional sources to include
-  language?: string; // Language filter (default: 'en')
+  query?: string; // 字段过滤：source:、title:、summary:
+  sources?: string[]; // 限定特定新闻源
+  excludeSources?: string[]; // 排除特定新闻源
+  optInSources?: string[]; // 额外纳入的新闻源
+  language?: string; // 语言过滤（默认：'en'）
 }
 ```
 
@@ -408,11 +408,11 @@ interface Company {
 
 ---
 
-## ❗ Error Handling & Retry Logic
+## ❗ 错误处理与重试逻辑
 
-### REST API Retries
+### REST API 重试
 
-The client automatically retries failed HTTP requests for:
+客户端会对以下失败的 HTTP 请求自动重试：
 
 - `429 Too Many Requests`
 - `500 Internal Server Error`
@@ -420,52 +420,53 @@ The client automatically retries failed HTTP requests for:
 - `503 Service Unavailable`
 - `504 Gateway Timeout`
 
-Retry behavior uses exponential backoff (500ms, 1000ms, 2000ms, etc.).
+重试采用指数退避（500ms、1000ms、2000ms，依此类推）。
 
-### WebSocket Reconnection
+### WebSocket 重连
 
-On disconnection, the client automatically attempts to reconnect with:
+连接断开后，客户端会自动尝试重连，具体行为如下：
 
-- Exponential backoff (0.5s → 1s → 2s → ... → 10s max)
-- Proactive connection rotation (every 115 minutes to avoid AWS 2-hour limit)
-- Rate limit and error handling with appropriate backoff
+- 指数退避（0.5s → 1s → 2s → …… → 最大 10s）
+- 主动连接轮换（每 115 分钟一次，以规避 AWS 2 小时限制）
+- 针对速率限制和错误采用相应的退避处理
 
 ---
 
-## 🧪 Testing
+## 🧪 测试
 
-### Unit Tests
+### 单元测试
 
 ```bash
 npm test
 ```
 
-### Integration Tests
+### 集成测试
 
-Integration tests require a valid API key:
+集成测试需要有效的 API 密钥：
 
 ```bash
-# All integration tests
+# 全部集成测试
 FINLIGHT_API_KEY=your_key npm run test:integration
 
-# API tests only
+# 仅 API 测试
 FINLIGHT_API_KEY=your_key npm run test:integration:api
 
-# WebSocket tests only
+# 仅 WebSocket 测试
 FINLIGHT_API_KEY=your_key npm run test:integration:ws
 ```
 
 ---
 
-## 📮 Support
+## 📮 支持
 
-If you encounter issues or have questions:
+如遇到问题或有疑问：
 
-- 📧 Email: [info@finlight.me](mailto:info@finlight.me)
-- 🐛 Issues: [GitHub Issues](https://github.com/jubeiargh/finlight-client/issues)
+- 📧 邮箱：[info@finlight.me](mailto:info@finlight.me)
+- 🐛 问题反馈：[GitHub Issues](https://github.com/jubeiargh/finlight-client/issues)
+- 🌏 中文产品页：[finlight.me/zh/news-api](https://finlight.me/zh/news-api)
 
 ---
 
-## 🎉 Happy coding!
+## 🎉 祝编码愉快！
 
-finlight helps you stay ahead of the market with real-time, enriched news feeds.
+finlight 通过实时、经过增强的新闻流，帮助你更早地掌握市场动态。
