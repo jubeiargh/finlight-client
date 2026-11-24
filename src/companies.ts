@@ -43,13 +43,17 @@ export function withSkipped<T>(items: T[], skipped: SkippedEntry[]): T[] & { ski
   return items as T[] & { skipped: SkippedEntry[] };
 }
 
-/** Company master data. Needs the `entityAccess` entitlement (403 otherwise). */
+/**
+ * Company master data. Needs the `entityAccess` entitlement (403 otherwise).
+ * Each successful call costs 1 credit, like an article request; a 304 revalidation and
+ * errors are free.
+ */
 export class CompaniesService {
   readonly #cache = new Map<number, { etag: string; record: CompanyRecord }>();
 
   constructor(private readonly http: HttpTransport) {}
 
-  /** Resolves a ticker, name, ISIN or vendor notation. At most 10 results, no pages. */
+  /** Resolves a ticker, name, ISIN or vendor notation. At most 10 results, no pages. Costs 1 credit. */
   async search(params: CompanySearchParams, options?: CallOptions): Promise<CompanyList> {
     const p = checkCompanySearch(params);
     const opts = checkOptions(options, ['signal'], 'companies.search');
@@ -58,7 +62,10 @@ export class CompaniesService {
     return this.list(query, opts.signal as AbortSignal | undefined);
   }
 
-  /** Batch resolve 1 to 10 ids. Unknown ids are left out; the order is not guaranteed. */
+  /**
+   * Batch resolve 1 to 10 ids. Unknown ids are left out; the order is not guaranteed.
+   * Costs 1 credit per request, not per id.
+   */
   async getMany(ids: readonly number[], options?: CallOptions): Promise<CompanyList> {
     const checked = checkCompanyIds(ids);
     const opts = checkOptions(options, ['signal'], 'companies.getMany');
@@ -83,6 +90,7 @@ export class CompaniesService {
   /**
    * `GET /v3/companies/{companyId}`. Revalidates with the ETag of a cached copy and serves
    * that copy on 304. `cacheInfo(record)` exposes the ETag. A 404 is a `FinlightApiError`.
+   * Costs 1 credit when the server sends the record (200); a 304 revalidation is free.
    */
   get(companyId: number, options?: CallOptions): Promise<CompanyRecord>;
   get(companyId: number, options: CompanyGetOptions): Promise<CompanyRecord | null>;

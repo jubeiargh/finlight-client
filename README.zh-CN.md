@@ -101,6 +101,7 @@ const sources = await client.sources.list();
 - 在 id 上线之前收录的文章无法按 id 查询，请使用 `getByLink`。
 - 公司接口需要 `entityAccess` 权限，否则返回 403（`ForbiddenError`）。
 - `companies.get` 会保存 ETag 并重新验证；收到 304 时返回缓存的记录。`cacheInfo(record)` 可查看 ETag。如果传入自己的 `ifNoneMatch`，304 时返回 `null`（"未修改"）。
+- 每次成功的查询（`companies.search`、`companies.getMany`、`companies.get`、`sources.list`）与文章请求一样消耗 1 个额度；`getMany` 按请求计费，而不是按 id。304 重新验证和错误响应免费。查询与文章接口共用月度配额和突发限制，因此这里也可能出现 429。
 - `companies.search`、`companies.getMany` 和 `sources.list` 返回数组，并额外带有 `skipped` 字段，列出无法解码的条目。
 
 ## 缺失、null 与空列表

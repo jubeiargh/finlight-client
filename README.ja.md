@@ -101,6 +101,7 @@ const sources = await client.sources.list();
 - id 導入前に登録された記事は id で参照できません。`getByLink` を使ってください。
 - 企業のエンドポイントには `entityAccess` の権限が必要です。ない場合は 403（`ForbiddenError`）になります。
 - `companies.get` は ETag を保持して再検証し、304 のときはキャッシュしたレコードを返します。`cacheInfo(record)` で ETag を確認できます。独自の `ifNoneMatch` を渡した場合、304 は `null`（「変更なし」）になります。
+- 参照（`companies.search`、`companies.getMany`、`companies.get`、`sources.list`）は成功するごとに記事リクエストと同じく 1 クレジットかかります。`getMany` は id ごとではなく 1 リクエストで 1 クレジットです。304 の再検証とエラー応答は無料です。参照は記事のエンドポイントと月間クォータおよびバースト制限を共有するため、ここでも 429 が起こりえます。
 - `companies.search`、`companies.getMany`、`sources.list` は配列を返し、デコードできなかったエントリを `skipped` フィールドに持ちます。
 
 ## キーなし、null、空リスト
