@@ -75,7 +75,7 @@ for await (const p of client.articles.searchAll({ query: 'eventType:mna' }).page
 - 遇到 `hasMore: false`、`nextCursor: null` 或达到 `maxPages`（默认 10）时停止。达到上限时会记录警告，可通过 `result.nextCursor` 继续。
 - 每一页都会计费。结果只能遍历一次。
 - `from` 和 `to` 接受 `Date`（以带毫秒的 UTC 发送）或字符串（原样发送），作用于 `orderBy` 指定的时间字段。
-- `sourceTypes` 和 `excludeSourceTypes` 按来源类型过滤（`SOURCE_TYPES`：`newswire`、`press_release`、`financial_media`、`general_media`、`aggregator`、`blog`、`government`）。未分类来源的文章（`source.type` 为 `null`）不会匹配 `sourceTypes`，但会被 `excludeSourceTypes` 保留。两者仅用于搜索，不适用于流。
+- `sourceTypes` 和 `excludeSourceTypes` 按来源类型过滤（`SOURCE_TYPES`：`newswire`、`press_release`、`financial_media`、`general_media`、`aggregator`、`blog`、`government`）。未分类来源的文章（`source.type` 为 `null`）不会匹配 `sourceTypes`，但会被 `excludeSourceTypes` 保留。两者也适用于 `stream` 和 `rawStream`；传入未知值时，流会以 `ValidationFailedError` 结束。
 - 无法解码的条目会被跳过、记录日志并列在 `page.skipped` 中，页面其余部分仍可使用。
 
 ## 查询文章、公司和来源
@@ -164,7 +164,7 @@ for await (const item of client.rawStream({ query: 'source:www.reuters.com' })) 
 - 退出循环、调用 `stream.close()` 或触发 abort 信号都会关闭 socket 并停止所有计时器。
 - 以下情况会以错误结束流：密钥被拒绝、套餐不含 WebSocket、订阅无效以及原因为 `connection_limit` 的抢占（`PreemptedError`）。其他问题会交给 `onError`，流继续运行。
 - **WebSocket 配额用尽。** 当本期配额用尽（连接被拒绝或原因为 `quota_exceeded` 的抢占）时，流不会结束，而是每小时重试一次，直到配额再次允许。每次尝试都会记录警告并报告给 `onQuotaWait`。设置 `quotaReconnect: false` 则改为以错误结束流；`quotaReconnectIntervalMs` 可修改间隔。REST 调用从不等待：月度 429 会立即失败。
-- `rawStream` 不支持 `include`，也不支持增强相关的过滤条件。
+- `rawStream` 不支持 `include`，也不支持增强相关的过滤条件。但支持 `sourceTypes` 和 `excludeSourceTypes`。
 
 ## Webhook
 

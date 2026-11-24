@@ -73,7 +73,7 @@ for await (const p of client.articles.searchAll({ query: 'eventType:mna' }).page
 - It stops at `hasMore: false`, at `nextCursor: null` or after `maxPages` (default 10). At the limit it logs a warning, and `result.nextCursor` lets you continue.
 - Every page is a metered call. A result can be iterated only once.
 - `from` and `to` take a `Date` (sent as UTC with milliseconds) or a string (sent as is). They apply to the `orderBy` timestamp.
-- `sourceTypes` and `excludeSourceTypes` filter by the type of the source (`SOURCE_TYPES`: `newswire`, `press_release`, `financial_media`, `general_media`, `aggregator`, `blog`, `government`). Articles of unclassified sources (`source.type` is `null`) never match `sourceTypes` and are kept by `excludeSourceTypes`. Both work on search only, not on streams.
+- `sourceTypes` and `excludeSourceTypes` filter by the type of the source (`SOURCE_TYPES`: `newswire`, `press_release`, `financial_media`, `general_media`, `aggregator`, `blog`, `government`). Articles of unclassified sources (`source.type` is `null`) never match `sourceTypes` and are kept by `excludeSourceTypes`. Both also work on `stream` and `rawStream`; an unknown value ends the stream with a `ValidationFailedError`.
 - Entries that cannot be decoded are skipped, logged and listed in `page.skipped`. The rest of the page stays usable.
 
 ## Look up articles, companies and sources
@@ -162,7 +162,7 @@ Things to know:
 - Leaving the loop, `stream.close()` or the abort signal closes the socket and stops all timers.
 - A stream ends with an error for a refused key, a plan without WebSockets, an invalid subscribe and a `connection_limit` preemption (`PreemptedError`). Other problems go to `onError` and the stream keeps running.
 - **Used-up WebSocket quota.** When the quota of the period is used up (refused dial or `quota_exceeded` preemption), the stream does not end: it tries again every hour until the quota allows it. Each attempt is logged as a warning and reported to `onQuotaWait`. Set `quotaReconnect: false` to end the stream with the error instead; `quotaReconnectIntervalMs` changes the interval. REST calls never wait: a monthly 429 fails at once.
-- `rawStream` has no `include` and no enrichment filters.
+- `rawStream` has no `include` and no enrichment filters. `sourceTypes` and `excludeSourceTypes` work on it.
 
 ## Webhooks
 

@@ -75,7 +75,7 @@ for await (const p of client.articles.searchAll({ query: 'eventType:mna' }).page
 - `hasMore: false`、`nextCursor: null`、または `maxPages`（既定 10）に達すると止まります。上限に達すると警告を記録し、`result.nextCursor` で続きを取得できます。
 - 各ページは課金対象の呼び出しです。結果は一度だけ反復できます。
 - `from` と `to` は `Date`（ミリ秒付き UTC で送信）または文字列（そのまま送信）を受け取り、`orderBy` のタイムスタンプに適用されます。
-- `sourceTypes` と `excludeSourceTypes` はソースの種類で絞り込みます（`SOURCE_TYPES`: `newswire`、`press_release`、`financial_media`、`general_media`、`aggregator`、`blog`、`government`）。未分類ソースの記事（`source.type` が `null`）は `sourceTypes` に一致せず、`excludeSourceTypes` では残ります。どちらも検索専用で、ストリームでは使えません。
+- `sourceTypes` と `excludeSourceTypes` はソースの種類で絞り込みます（`SOURCE_TYPES`: `newswire`、`press_release`、`financial_media`、`general_media`、`aggregator`、`blog`、`government`）。未分類ソースの記事（`source.type` が `null`）は `sourceTypes` に一致せず、`excludeSourceTypes` では残ります。どちらも `stream` と `rawStream` でも使えます。未知の値を渡すとストリームは `ValidationFailedError` で終了します。
 - デコードできないエントリはスキップされ、ログに記録され、`page.skipped` に入ります。ページの残りはそのまま使えます。
 
 ## 記事・企業・ソースの参照
@@ -164,7 +164,7 @@ for await (const item of client.rawStream({ query: 'source:www.reuters.com' })) 
 - ループを抜ける、`stream.close()` を呼ぶ、または abort シグナルで、ソケットが閉じられすべてのタイマーが止まります。
 - キーの拒否、WebSocket を含まないプラン、無効な購読、理由が `connection_limit` のプリエンプション（`PreemptedError`）では、ストリームはエラーで終わります。その他の問題は `onError` に渡され、ストリームは動き続けます。
 - **WebSocket クォータの枯渇。** 期間のクォータを使い切ると（接続の拒否、または理由が `quota_exceeded` のプリエンプション）、ストリームは終わらず、クォータが再び許すまで 1 時間ごとに再試行します。各試行は警告としてログに記録され、`onQuotaWait` に通知されます。`quotaReconnect: false` にするとエラーでストリームを終えます。間隔は `quotaReconnectIntervalMs` で変更できます。REST の呼び出しは待ちません。月間の 429 はすぐに失敗します。
-- `rawStream` には `include` もエンリッチ用のフィルタもありません。
+- `rawStream` には `include` もエンリッチ用のフィルタもありません。`sourceTypes` と `excludeSourceTypes` は使えます。
 
 ## Webhook
 

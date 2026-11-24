@@ -85,6 +85,10 @@ export interface StreamParams {
   tickers?: List<string>;
   countries?: List<string>;
   categories?: List<string>;
+  /** Keep only articles whose source has one of these types. Same meaning as in search. */
+  sourceTypes?: List<SourceType>;
+  /** Drop articles whose source has one of these types. Unclassified sources are kept. */
+  excludeSourceTypes?: List<SourceType>;
   excludeEmptyContent?: boolean;
   /** Without it the server never sends `article.updated`. */
   includeUpdates?: boolean;
@@ -96,6 +100,10 @@ export interface RawStreamParams {
   query?: string;
   sources?: List<string>;
   excludeSources?: List<string>;
+  /** Keep only articles whose source has one of these types. Same meaning as in search. */
+  sourceTypes?: List<SourceType>;
+  /** Drop articles whose source has one of these types. Unclassified sources are kept. */
+  excludeSourceTypes?: List<SourceType>;
   language?: string;
   includeUpdates?: boolean;
 }
@@ -147,6 +155,8 @@ const STREAM_KEYS: Record<keyof StreamParams, Kind> = {
   tickers: 'strings',
   countries: 'strings',
   categories: 'strings',
+  sourceTypes: 'strings',
+  excludeSourceTypes: 'strings',
   excludeEmptyContent: 'boolean',
   includeUpdates: 'boolean',
   include: 'include',
@@ -156,6 +166,8 @@ const RAW_STREAM_KEYS: Record<keyof RawStreamParams, Kind> = {
   query: 'string',
   sources: 'strings',
   excludeSources: 'strings',
+  sourceTypes: 'strings',
+  excludeSourceTypes: 'strings',
   language: 'string',
   includeUpdates: 'boolean',
 };

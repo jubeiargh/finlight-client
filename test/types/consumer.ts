@@ -30,8 +30,9 @@ if (contentPresent(article)) {
 // @ts-expect-error content may be absent: it is optional without the guard
 const unchecked: string | null = article.content;
 const when: Date | null = toDate(article.publishedAt);
+void client.rawStream({ sourceTypes: ['newswire', 'a-future-type'], excludeSourceTypes: ['blog'] });
 async function consume(): Promise<void> {
-  for await (const ev of client.stream({ include: ['companies'] })) {
+  for await (const ev of client.stream({ include: ['companies'], sourceTypes: ['newswire'] })) {
     const item: StreamEvent = ev;
     if (item.kind === 'created' || item.kind === 'updated') void item.data?.id;
   }

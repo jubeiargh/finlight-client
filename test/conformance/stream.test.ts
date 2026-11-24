@@ -203,4 +203,22 @@ describe('S: WebSocket sessions', () => {
   test(caseName('S-26'), () => runSession(ws, session('dial-server-error.json')));
   test(caseName('S-27'), () => runSession(ws, session('preempted-quota-exceeded-no-reconnect.json')));
   test(caseName('S-28'), () => runSession(ws, session('dial-quota-exceeded-no-reconnect.json')));
+  test(caseName('S-29'), () => {
+    const fixture = session('validation-failed-source-type.json');
+    const sent = fixture.steps.find(
+      (s: any) => s.step === 'serverSends' && s.frame.event === 'connection.error',
+    );
+    const detail = sent.frame.data.details[0];
+    // Values are not checked locally (SourceType stays open): the server rejects it, the stream ends.
+    return runSession(ws, fixture, {
+      after: async ({ probe }) => {
+        const err = probe.terminal as FinlightApiError;
+        expect(err.errors).toHaveLength(1);
+        expect(err.errors[0].field).toBe('sourceTypes');
+        expect(err.errors[0].allowedValues).toEqual(detail.allowedValues);
+        expect(err.errors[0].constraints).toEqual(detail.constraints);
+        expect(ws.dialCount).toBe(1);
+      },
+    });
+  });
 });

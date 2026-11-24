@@ -23,7 +23,7 @@
     "- `hasMore: false`, `nextCursor: null` 또는 `maxPages`(기본 10)에 도달하면 멈춥니다. 한도에 도달하면 경고를 기록하며, `result.nextCursor`로 이어서 가져올 수 있습니다.",
     "- 각 페이지는 과금되는 호출입니다. 결과는 한 번만 순회할 수 있습니다.",
     "- `from`과 `to`는 `Date`(밀리초를 포함한 UTC로 전송) 또는 문자열(그대로 전송)을 받으며, `orderBy` 타임스탬프에 적용됩니다.",
-    "- `sourceTypes`와 `excludeSourceTypes`는 소스 유형으로 필터링합니다(`SOURCE_TYPES`: `newswire`, `press_release`, `financial_media`, `general_media`, `aggregator`, `blog`, `government`). 분류되지 않은 소스의 기사(`source.type`이 `null`)는 `sourceTypes`에 일치하지 않으며 `excludeSourceTypes`에서는 유지됩니다. 둘 다 검색 전용이며 스트림에서는 사용할 수 없습니다.",
+    "- `sourceTypes`와 `excludeSourceTypes`는 소스 유형으로 필터링합니다(`SOURCE_TYPES`: `newswire`, `press_release`, `financial_media`, `general_media`, `aggregator`, `blog`, `government`). 분류되지 않은 소스의 기사(`source.type`이 `null`)는 `sourceTypes`에 일치하지 않으며 `excludeSourceTypes`에서는 유지됩니다. 둘 다 `stream`과 `rawStream`에서도 사용할 수 있으며, 알 수 없는 값을 넣으면 스트림이 `ValidationFailedError`로 종료됩니다.",
     "- 디코딩할 수 없는 항목은 건너뛰고 로그에 남기며 `page.skipped`에 담습니다. 페이지의 나머지는 그대로 사용할 수 있습니다."
   ],
   "h_lookups": "기사, 기업, 출처 조회",
@@ -58,7 +58,7 @@
     "- 루프를 벗어나거나, `stream.close()`를 호출하거나, abort 신호를 보내면 소켓이 닫히고 모든 타이머가 멈춥니다.",
     "- 키 거부, WebSocket이 없는 요금제, 잘못된 구독, 사유가 `connection_limit`인 선점(`PreemptedError`)이 발생하면 스트림은 오류로 끝납니다. 그 밖의 문제는 `onError`로 전달되고 스트림은 계속 실행됩니다.",
     "- **WebSocket 할당량 소진.** 이번 기간의 할당량을 다 쓰면(연결 거부 또는 사유가 `quota_exceeded`인 선점) 스트림은 끝나지 않고, 할당량이 다시 허용될 때까지 1시간마다 다시 시도합니다. 각 시도는 경고로 기록되고 `onQuotaWait`로 전달됩니다. `quotaReconnect: false`로 설정하면 대신 오류로 스트림을 끝냅니다. 간격은 `quotaReconnectIntervalMs`로 바꿀 수 있습니다. REST 호출은 기다리지 않으며, 월간 429는 즉시 실패합니다.",
-    "- `rawStream`에는 `include`도, 보강 관련 필터도 없습니다."
+    "- `rawStream`에는 `include`도, 보강 관련 필터도 없습니다. `sourceTypes`와 `excludeSourceTypes`는 사용할 수 있습니다."
   ],
   "h_webhooks": "웹훅",
   "webhooksIntro": "`Webhooks.constructEvent(rawBody, headers, secret)`는 서명과 타임스탬프(기본 허용 오차 300초)를 확인한 다음 본문을 읽습니다. `WebhookEvent`를 반환하며, 서명은 올바르지만 이전 형식인 본문에는 `WrongPayloadVersion` 결과를 반환합니다.",

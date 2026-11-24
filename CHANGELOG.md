@@ -27,7 +27,7 @@
 - Streams survive a used-up WebSocket quota: after a dial refused with "quota exceeded" or a `quota_exceeded` preemption they retry every hour until the quota allows it again. Each attempt is logged as a warning and reported to `onQuotaWait`. On by default; `quotaReconnect: false` ends the stream with the typed error instead, and `quotaReconnectIntervalMs` sets the interval. A `connection_limit` preemption still ends the stream. REST never waits for a new quota: a monthly 429 fails at once, also in `searchAll`.
 - `rawJson(value)` returns the JSON as received, including keys this version does not know.
 - `toDate()` parses timestamps strictly (RFC 3339).
-- Search filters `sourceTypes` and `excludeSourceTypes` on `articles.search` and `articles.searchAll` (not on streams). `SOURCE_TYPES` lists the 7 known values (`newswire`, `press_release`, `financial_media`, `general_media`, `aggregator`, `blog`, `government`); `SourceType` stays open. `source.type` and `Source.type` are `null` when the source is not classified.
+- Filters `sourceTypes` and `excludeSourceTypes` on `articles.search`, `articles.searchAll`, `stream` and `rawStream`. They are sent only when set. An unknown value is rejected by the server: a 400 on search, a terminal `ValidationFailedError` on a stream. Stream validation errors carry `allowedValues` in `errors[]`, like REST. `SOURCE_TYPES` lists the 7 known values (`newswire`, `press_release`, `financial_media`, `general_media`, `aggregator`, `blog`, `government`); `SourceType` stays open. `source.type` and `Source.type` are `null` when the source is not classified.
 - Unknown request parameters throw before any request.
 - `User-Agent: finlight-client-typescript/<version>` and `x-client-version` on every request and dial.
 

@@ -150,12 +150,21 @@ describe('R-REQ-1 / R-REQ-3: requests', () => {
     expect(buildSubscribe(inherited, false)).toEqual({ payloadVersion: 3, query: 'q' });
   });
 
-  test('sourceTypes and excludeSourceTypes are search-only: both streams reject them', () => {
-    for (const key of ['sourceTypes', 'excludeSourceTypes']) {
-      for (const raw of [false, true]) {
-        expect(() => buildSubscribe({ query: 'q', [key]: ['newswire'] } as any, raw)).toThrow(
-          FinlightValidationError,
-        );
+  test('sourceTypes and excludeSourceTypes go into both subscribe frames, only when set', () => {
+    for (const raw of [false, true]) {
+      expect(
+        buildSubscribe({ query: 'q', sourceTypes: ['newswire'], excludeSourceTypes: ['blog'] }, raw),
+      ).toEqual({ payloadVersion: 3, query: 'q', sourceTypes: ['newswire'], excludeSourceTypes: ['blog'] });
+      expect(buildSubscribe({ query: 'q' }, raw)).toEqual({ payloadVersion: 3, query: 'q' });
+      // Values stay open (the server checks them); the shape is checked here.
+      expect(buildSubscribe({ sourceTypes: ['wire'] }, raw)).toEqual({
+        payloadVersion: 3,
+        sourceTypes: ['wire'],
+      });
+      for (const key of ['sourceTypes', 'excludeSourceTypes']) {
+        for (const bad of ['newswire', [1], null]) {
+          expect(() => buildSubscribe({ [key]: bad } as any, raw)).toThrow(FinlightValidationError);
+        }
       }
     }
   });

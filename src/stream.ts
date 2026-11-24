@@ -181,11 +181,15 @@ function streamError(code: string | null, message: string | null, details: unkno
       if (isObject(d.constraints)) {
         for (const [k, v] of Object.entries(d.constraints)) if (typeof v === 'string') constraints[k] = v;
       }
-      errors.push({
+      const issue: FieldIssue = {
         field: typeof d.field === 'string' ? d.field : null,
         issue: Object.values(constraints).join('; ') || null,
         constraints,
-      });
+      };
+      if (Array.isArray(d.allowedValues)) {
+        issue.allowedValues = d.allowedValues.filter((v): v is string => typeof v === 'string');
+      }
+      errors.push(issue);
     }
   }
   const data = { code, message, details };

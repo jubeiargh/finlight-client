@@ -110,5 +110,6 @@ Each case runs as its own jest test named "<id> <title>". D-10 runs one test per
 | S-26 | Dial refused: server error | `test/conformance/stream.test.ts` | `S-26 Dial refused: server error` |
 | S-27 | connection.preempted, reason quota_exceeded, with quotaReconnect turned off | `test/conformance/stream.test.ts` | `S-27 connection.preempted, reason quota_exceeded, with quotaReconnect turned off` |
 | S-28 | Dial refused: WebSocket quota exhausted, with quotaReconnect turned off | `test/conformance/stream.test.ts` | `S-28 Dial refused: WebSocket quota exhausted, with quotaReconnect turned off` |
+| S-29 | VALIDATION_FAILED for an unknown sourceTypes value | `test/conformance/stream.test.ts` | `S-29 VALIDATION_FAILED for an unknown sourceTypes value` |
 
-Cases: 105.
+Cases: 106.

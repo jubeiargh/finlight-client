@@ -67,7 +67,7 @@ export const SENTIMENT_LABELS = ['positive', 'negative', 'neutral'] as const;
 export type SentimentLabel = (typeof SENTIMENT_LABELS)[number] | (string & {});
 
 /**
- * `source.type`, `/v3/sources` `type` and search filters `sourceTypes`/`excludeSourceTypes`.
+ * `source.type`, `/v3/sources` `type` and the `sourceTypes`/`excludeSourceTypes` filters of search and streams.
  * `source.type` is null when the source is not classified.
  */
 export const SOURCE_TYPES = [
