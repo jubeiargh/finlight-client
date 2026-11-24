@@ -152,7 +152,8 @@ for await (const item of client.rawStream({ query: 'source:www.reuters.com' })) 
 - `onAdmitted` はサーバーが購読を検査する前に呼ばれます。購読が受け入れられたという意味ではありません。
 - SDK はデータを自動で補完しません。`onReconnect` が `lastSeenAt` を渡すので、REST で欠けた分を取得できます。
 - ループを抜ける、`stream.close()` を呼ぶ、または abort シグナルで、ソケットが閉じられすべてのタイマーが止まります。
-- キーの拒否、WebSocket を含まないプラン、クォータの枯渇、無効な購読、プリエンプション（`PreemptedError`）では、ストリームはエラーで終わります。その他の問題は `onError` に渡され、ストリームは動き続けます。
+- キーの拒否、WebSocket を含まないプラン、無効な購読、理由が `connection_limit` のプリエンプション（`PreemptedError`）では、ストリームはエラーで終わります。その他の問題は `onError` に渡され、ストリームは動き続けます。
+- **WebSocket クォータの枯渇。** 期間のクォータを使い切ると（接続の拒否、または理由が `quota_exceeded` のプリエンプション）、ストリームは終わらず、クォータが再び許すまで 1 時間ごとに再試行します。各試行は警告としてログに記録され、`onQuotaWait` に通知されます。`reconnectOnQuotaExhausted: false` にするとエラーでストリームを終えます。間隔は `quotaRetryIntervalMs` で変更できます。REST の呼び出しは待ちません。月間の 429 はすぐに失敗します。
 - `rawStream` には `include` もエンリッチ用のフィルタもありません。
 
 ## Webhook
@@ -238,6 +239,7 @@ await client.articles.search({ query: 'ticker:TSLA' }, { signal: controller.sign
 | `retryOnBurst` | `'once'` | 429 バースト応答に対して `'once'` または `'off'`。 |
 | `burstWaitMs` | `10000` | バースト再試行の前の待ち時間。最低 10000。 |
 | `maxPages` | `10` | `searchAll` のページ数の上限。 |
+| `reconnectOnQuotaExhausted` / `quotaRetryIntervalMs` | `true` / `3600000` | WebSocket クォータ枯渇時のストリームの動作：1 時間ごとに再試行（`false` ならストリームを終了）。 |
 | `pingIntervalMs` / `watchdogTimeoutMs` / `rotationIntervalMs` | `25000` / `60000` / `6900000` | ストリームの ping、pong ウォッチドッグ、接続の更新。 |
 | `fetch` / `wsAgent` | - | 独自の `fetch`（REST）と HTTP エージェント（WebSocket）。例えばプロキシ用です。その場合はそれら自身のタイムアウトが適用されます。独自に再試行しないようにしてください。 |
 | `logger` | - | `debug`/`info`/`warn`/`error` を持つ任意のロガー。 |

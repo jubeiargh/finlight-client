@@ -152,7 +152,8 @@ for await (const item of client.rawStream({ query: 'source:www.reuters.com' })) 
 - `onAdmitted` 在服务器检查订阅之前触发，并不表示订阅已被接受。
 - SDK 不会自动补齐数据。`onReconnect` 提供 `lastSeenAt`，你可以通过 REST 补齐缺口。
 - 退出循环、调用 `stream.close()` 或触发 abort 信号都会关闭 socket 并停止所有计时器。
-- 以下情况会以错误结束流：密钥被拒绝、套餐不含 WebSocket、配额用尽、订阅无效以及被抢占（`PreemptedError`）。其他问题会交给 `onError`，流继续运行。
+- 以下情况会以错误结束流：密钥被拒绝、套餐不含 WebSocket、订阅无效以及原因为 `connection_limit` 的抢占（`PreemptedError`）。其他问题会交给 `onError`，流继续运行。
+- **WebSocket 配额用尽。** 当本期配额用尽（连接被拒绝或原因为 `quota_exceeded` 的抢占）时，流不会结束，而是每小时重试一次，直到配额再次允许。每次尝试都会记录警告并报告给 `onQuotaWait`。设置 `reconnectOnQuotaExhausted: false` 则改为以错误结束流；`quotaRetryIntervalMs` 可修改间隔。REST 调用从不等待：月度 429 会立即失败。
 - `rawStream` 不支持 `include`，也不支持增强相关的过滤条件。
 
 ## Webhook
@@ -238,6 +239,7 @@ await client.articles.search({ query: 'ticker:TSLA' }, { signal: controller.sign
 | `retryOnBurst` | `'once'` | 对 429 突发限流：`'once'` 或 `'off'`。 |
 | `burstWaitMs` | `10000` | 突发限流重试前的等待时间，至少 10000。 |
 | `maxPages` | `10` | `searchAll` 的页数上限。 |
+| `reconnectOnQuotaExhausted` / `quotaRetryIntervalMs` | `true` / `3600000` | WebSocket 配额用尽时流的行为：每小时重试（设为 `false` 则结束流）。 |
 | `pingIntervalMs` / `watchdogTimeoutMs` / `rotationIntervalMs` | `25000` / `60000` / `6900000` | 流的 ping、pong 看门狗和连接更换。 |
 | `fetch` / `wsAgent` | - | 自定义 `fetch`（REST）和 HTTP agent（WebSocket），例如用于代理。此时以它们自己的超时为准；请确保它们不会自行重试。 |
 | `logger` | - | 任何带有 `debug`/`info`/`warn`/`error` 的日志器。 |

@@ -152,7 +152,8 @@ for await (const item of client.rawStream({ query: 'source:www.reuters.com' })) 
 - `onAdmitted`는 서버가 구독을 검사하기 전에 호출됩니다. 구독이 수락되었다는 뜻이 아닙니다.
 - SDK는 데이터를 자동으로 보충하지 않습니다. `onReconnect`가 `lastSeenAt`을 전달하므로 REST로 빈 구간을 채울 수 있습니다.
 - 루프를 벗어나거나, `stream.close()`를 호출하거나, abort 신호를 보내면 소켓이 닫히고 모든 타이머가 멈춥니다.
-- 키 거부, WebSocket이 없는 요금제, 할당량 소진, 잘못된 구독, 선점(`PreemptedError`)이 발생하면 스트림은 오류로 끝납니다. 그 밖의 문제는 `onError`로 전달되고 스트림은 계속 실행됩니다.
+- 키 거부, WebSocket이 없는 요금제, 잘못된 구독, 사유가 `connection_limit`인 선점(`PreemptedError`)이 발생하면 스트림은 오류로 끝납니다. 그 밖의 문제는 `onError`로 전달되고 스트림은 계속 실행됩니다.
+- **WebSocket 할당량 소진.** 이번 기간의 할당량을 다 쓰면(연결 거부 또는 사유가 `quota_exceeded`인 선점) 스트림은 끝나지 않고, 할당량이 다시 허용될 때까지 1시간마다 다시 시도합니다. 각 시도는 경고로 기록되고 `onQuotaWait`로 전달됩니다. `reconnectOnQuotaExhausted: false`로 설정하면 대신 오류로 스트림을 끝냅니다. 간격은 `quotaRetryIntervalMs`로 바꿀 수 있습니다. REST 호출은 기다리지 않으며, 월간 429는 즉시 실패합니다.
 - `rawStream`에는 `include`도, 보강 관련 필터도 없습니다.
 
 ## 웹훅
@@ -238,6 +239,7 @@ await client.articles.search({ query: 'ticker:TSLA' }, { signal: controller.sign
 | `retryOnBurst` | `'once'` | 429 버스트 응답에 대해 `'once'` 또는 `'off'`. |
 | `burstWaitMs` | `10000` | 버스트 재시도 전 대기 시간. 최소 10000. |
 | `maxPages` | `10` | `searchAll`의 페이지 수 한도. |
+| `reconnectOnQuotaExhausted` / `quotaRetryIntervalMs` | `true` / `3600000` | WebSocket 할당량 소진 시 스트림 동작: 1시간마다 재시도(`false`이면 스트림 종료). |
 | `pingIntervalMs` / `watchdogTimeoutMs` / `rotationIntervalMs` | `25000` / `60000` / `6900000` | 스트림 ping, pong 감시, 연결 교체. |
 | `fetch` / `wsAgent` | - | 직접 만든 `fetch`(REST)와 HTTP 에이전트(WebSocket). 예를 들어 프록시용입니다. 이 경우 그 자체의 타임아웃이 적용되며, 스스로 재시도하지 않도록 해야 합니다. |
 | `logger` | - | `debug`/`info`/`warn`/`error`를 가진 모든 로거. |

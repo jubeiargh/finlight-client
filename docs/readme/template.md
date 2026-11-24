@@ -206,6 +206,7 @@ await client.articles.search({ query: 'ticker:TSLA' }, { signal: controller.sign
 | `retryOnBurst` | `'once'` | {{cfg_retryOnBurst}} |
 | `burstWaitMs` | `10000` | {{cfg_burstWaitMs}} |
 | `maxPages` | `10` | {{cfg_maxPages}} |
+| `reconnectOnQuotaExhausted` / `quotaRetryIntervalMs` | `true` / `3600000` | {{cfg_quota}} |
 | `pingIntervalMs` / `watchdogTimeoutMs` / `rotationIntervalMs` | `25000` / `60000` / `6900000` | {{cfg_liveness}} |
 | `fetch` / `wsAgent` | - | {{cfg_transport}} |
 | `logger` | - | {{cfg_logger}} |

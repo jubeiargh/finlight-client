@@ -37,7 +37,14 @@ export type {
 } from './models';
 export { contentPresent, sentimentPresent, companiesPresent, eventsPresent } from './models';
 
-export type { FinlightStream, StreamOptions, AdmittedInfo, ReconnectInfo, ReconnectReason } from './stream';
+export type {
+  FinlightStream,
+  StreamOptions,
+  AdmittedInfo,
+  ReconnectInfo,
+  ReconnectReason,
+  QuotaWaitInfo,
+} from './stream';
 
 export {
   Webhooks,

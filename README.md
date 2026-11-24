@@ -150,7 +150,8 @@ Things to know:
 - `onAdmitted` fires before the server checks your subscribe. It does not mean the subscribe was accepted.
 - The SDK does not backfill. `onReconnect` gives you `lastSeenAt` so you can fill gaps through REST.
 - Leaving the loop, `stream.close()` or the abort signal closes the socket and stops all timers.
-- A stream ends with an error for a refused key, a plan without WebSockets, an exhausted quota, an invalid subscribe and a preemption (`PreemptedError`). Other problems go to `onError` and the stream keeps running.
+- A stream ends with an error for a refused key, a plan without WebSockets, an invalid subscribe and a `connection_limit` preemption (`PreemptedError`). Other problems go to `onError` and the stream keeps running.
+- **Used-up WebSocket quota.** When the quota of the period is used up (refused dial or `quota_exceeded` preemption), the stream does not end: it tries again every hour until the quota allows it. Each attempt is logged as a warning and reported to `onQuotaWait`. Set `reconnectOnQuotaExhausted: false` to end the stream with the error instead; `quotaRetryIntervalMs` changes the interval. REST calls never wait: a monthly 429 fails at once.
 - `rawStream` has no `include` and no enrichment filters.
 
 ## Webhooks
@@ -236,6 +237,7 @@ await client.articles.search({ query: 'ticker:TSLA' }, { signal: controller.sign
 | `retryOnBurst` | `'once'` | `'once'` or `'off'` for 429 burst answers. |
 | `burstWaitMs` | `10000` | Wait before the burst retry; at least 10000. |
 | `maxPages` | `10` | Page limit of `searchAll`. |
+| `reconnectOnQuotaExhausted` / `quotaRetryIntervalMs` | `true` / `3600000` | Stream behaviour when the WebSocket quota is used up: retry every hour (or end the stream with `false`). |
 | `pingIntervalMs` / `watchdogTimeoutMs` / `rotationIntervalMs` | `25000` / `60000` / `6900000` | Stream ping, pong watchdog and rotation. |
 | `fetch` / `wsAgent` | - | Your own `fetch` (REST) and HTTP agent (WebSocket), e.g. for a proxy. Their own timeouts then apply; make sure they do not retry on their own. |
 | `logger` | - | Any logger with `debug`/`info`/`warn`/`error`. |

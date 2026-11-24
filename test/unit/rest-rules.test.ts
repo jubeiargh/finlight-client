@@ -391,6 +391,26 @@ describe('R-ERR-1 / R-RETRY-1: errors and retries', () => {
     expect(mock.requests).toHaveLength(1);
   });
 
+  test('a monthly 429 fails at once, also in searchAll; it never waits for a new quota', async () => {
+    mock.always({
+      ...burst,
+      body: {
+        ...burst.body,
+        detail: 'Throttling Exception: Exceeded token limit of 1000 for the current period.',
+      },
+    });
+    const { client, clock } = restClient(mock.baseUrl);
+    const run = (async () => {
+      for await (const _ of client.articles.searchAll()) {
+        // drain
+      }
+    })();
+    const err = await run.catch((e) => e);
+    expect(err.limitType).toBe('monthly');
+    expect(mock.requests).toHaveLength(1);
+    expect(clock.sleeps).toEqual([]);
+  });
+
   test('a 429 without a known marker is "unknown" and not retried', async () => {
     mock.always({ ...burst, body: { ...burst.body, detail: 'something else' } });
     const { client } = restClient(mock.baseUrl);

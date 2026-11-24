@@ -33,7 +33,8 @@ export type ReconnectReason =
   | 'dial_failed'
   | 'dial_refused'
   | 'connection_limit'
-  | 'rate_limited';
+  | 'rate_limited'
+  | 'quota_exceeded';
 
 /** Signal after every new connection except the first one. */
 export interface ReconnectInfo {
@@ -58,13 +59,29 @@ export interface StreamOptions {
   onReconnect?: (info: ReconnectInfo) => void;
   /** Called for problems that do not end the stream (log-only errors, repeated failures). */
   onError?: (error: FinlightError) => void;
+  /**
+   * Called each time the stream waits for the WebSocket quota (see `reconnectOnQuotaExhausted`):
+   * after a `quota_exceeded` preemption and after every dial refused for the quota.
+   */
+  onQuotaWait?: (info: QuotaWaitInfo) => void;
+}
+
+/** A wait for the WebSocket quota of the current period to allow connections again. */
+export interface QuotaWaitInfo {
+  /** The refusal or preemption that caused the wait. */
+  error: FinlightError;
+  /** Time until the next attempt. */
+  nextAttemptInMs: number;
+  /** Consecutive quota waits, starting at 1. */
+  attempt: number;
 }
 
 /**
  * A live stream. Iterate it once with `for await`; leaving the loop, `close()` or the
  * abort signal closes the socket with 1000 and stops every timer.
- * Terminal problems (refused key, plan without WebSockets, quota, validation, preemption)
- * end the iteration with a typed error.
+ * Terminal problems (refused key, plan without WebSockets, validation, a `connection_limit`
+ * preemption) end the iteration with a typed error. An exhausted quota waits and retries
+ * hourly unless `reconnectOnQuotaExhausted` is `false`.
  */
 export interface FinlightStream extends AsyncIterable<StreamEvent> {
   close(): Promise<void>;
@@ -89,7 +106,7 @@ export function setStreamTestHooks(stream: FinlightStream, hooks: StreamTestHook
   TEST_HOOKS.set(stream, hooks);
 }
 
-type DelayKind = 'now' | 'backoff' | 'long';
+type DelayKind = 'now' | 'backoff' | 'long' | 'quota';
 type Planned =
   | { kind: 'terminal'; error: unknown }
   | { kind: 'reconnect'; reason: ReconnectReason; delay: DelayKind };
@@ -104,10 +121,8 @@ interface Conn {
   closed: Promise<void>;
 }
 
-const FORBIDDEN_TERMINAL_PREFIXES = [
-  'Your subscription does not include WebSockets',
-  'WebSocket quota exceeded',
-];
+const NO_WEBSOCKETS_PREFIX = 'Your subscription does not include WebSockets';
+const QUOTA_PREFIX = 'WebSocket quota exceeded';
 const TOO_MANY_PREFIX = 'Too many concurrent connections';
 const SEARCH_FAILED_SURFACE_AFTER = 5;
 
@@ -197,6 +212,8 @@ export class StreamSession implements FinlightStream {
   #rotatingFrom: Conn | null = null;
   #reconnectTimer: unknown = null;
   #failures = 0;
+  #quotaWaits = 0;
+  #pendingQuotaError: FinlightError | null = null;
   #searchFailed = 0;
   #connections = 0;
   #dedupe = new Map<string, true>();
@@ -496,6 +513,7 @@ export class StreamSession implements FinlightStream {
         return;
       case 'admitted': {
         this.#failures = 0;
+        this.#quotaWaits = 0;
         if (conn === this.#current && this.#rotatingFrom) {
           const old = this.#rotatingFrom;
           this.#rotatingFrom = null;
@@ -508,9 +526,18 @@ export class StreamSession implements FinlightStream {
         });
         return;
       }
-      case 'preempted':
-        this.finish({ error: new PreemptedError(frame.reason, frame.newLeaseId, frame.timestamp) });
+      case 'preempted': {
+        const error = new PreemptedError(frame.reason, frame.newLeaseId, frame.timestamp);
+        if (frame.reason === 'quota_exceeded') {
+          const planned = this.quotaPlan(error);
+          if (planned.kind === 'reconnect') {
+            this.drop(conn, planned, true);
+            return;
+          }
+        }
+        this.finish({ error });
         return;
+      }
       case 'error':
         this.handleError(conn, frame);
         return;
@@ -634,9 +661,10 @@ export class StreamSession implements FinlightStream {
       const text = message ?? '';
       if (status === 401) return { kind: 'terminal', error: dialError(status, message) };
       if (status === 403) {
-        if (FORBIDDEN_TERMINAL_PREFIXES.some((p) => text.startsWith(p))) {
+        if (text.startsWith(NO_WEBSOCKETS_PREFIX)) {
           return { kind: 'terminal', error: dialError(status, message) };
         }
+        if (text.startsWith(QUOTA_PREFIX)) return this.quotaPlan(dialError(status, message));
         if (text.startsWith(TOO_MANY_PREFIX)) {
           this.report(
             dialError(
@@ -684,6 +712,13 @@ export class StreamSession implements FinlightStream {
     return { kind: 'reconnect', reason: 'closed', delay: 'backoff' };
   }
 
+  /** Exhausted quota: wait and retry hourly (default), or end the stream when switched off. */
+  private quotaPlan(error: FinlightError): Planned {
+    if (!this.#cfg.reconnectOnQuotaExhausted) return { kind: 'terminal', error };
+    this.#pendingQuotaError = error;
+    return { kind: 'reconnect', reason: 'quota_exceeded', delay: 'quota' };
+  }
+
   private backoff(): number {
     const { reconnectBaseDelayMs, reconnectMaxDelayMs } = this.#cfg;
     const capped = Math.min(reconnectMaxDelayMs, reconnectBaseDelayMs * 2 ** Math.min(this.#failures, 16));
@@ -695,6 +730,20 @@ export class StreamSession implements FinlightStream {
     if (kind === 'backoff') delayMs = this.backoff();
     if (kind === 'long')
       delayMs = this.#cfg.longBackoffMs + Math.round(Math.random() * 0.2 * this.#cfg.longBackoffMs);
+    if (kind === 'quota') {
+      delayMs = this.#cfg.quotaRetryIntervalMs;
+      this.#quotaWaits += 1;
+      const error = this.#pendingQuotaError ?? dialError(403, QUOTA_PREFIX);
+      this.#pendingQuotaError = null;
+      this.#cfg.log.warn(
+        `WebSocket quota exhausted (${error.message}); attempt ${this.#quotaWaits}, next try in ${delayMs} ms`,
+      );
+      this.callUser('onQuotaWait', this.#options.onQuotaWait, {
+        error,
+        nextAttemptInMs: delayMs,
+        attempt: this.#quotaWaits,
+      });
+    }
     this.#failures += 1;
     this.#cfg.log.debug(`stream reconnect (${reason}) in ${delayMs} ms`);
     this.hooks.onReconnectScheduled?.({ delayMs, reason });

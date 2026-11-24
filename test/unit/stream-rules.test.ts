@@ -307,3 +307,89 @@ describe('connect failures', () => {
     }
   });
 });
+
+describe('R-WS-2: exhausted quota (owner decision 2026-11-24)', () => {
+  const QUOTA = { status: 403, body: '{"message":"WebSocket quota exceeded for the current period"}' };
+
+  test('retries every hour, warns and reports each attempt, and resumes when the quota allows', async () => {
+    ws.dialScript.push(QUOTA, QUOTA);
+    const warnings: string[] = [];
+    const probe = new StreamProbe(ws, {
+      raw: false,
+      params: { query: 'q' },
+      config: { logger: { warn: (m: string) => warnings.push(m) } },
+    }).start();
+    try {
+      await ws.nextDial();
+      await waitFor(() => probe.scheduled.length === 1, 'first quota wait');
+      expect(probe.scheduled[0]).toEqual({ delayMs: 3_600_000, reason: 'quota_exceeded' });
+      await probe.advance(3_599_999);
+      expect(ws.dialCount).toBe(1);
+      await probe.advance(1);
+      await ws.nextDial();
+      await waitFor(() => probe.scheduled.length === 2, 'second quota wait');
+      expect(probe.scheduled[1].delayMs).toBe(3_600_000);
+      expect(probe.quotaWaits.map((q) => q.attempt)).toEqual([1, 2]);
+      expect(probe.quotaWaits.every((q) => q.kind === 'api')).toBe(true);
+      expect(warnings.filter((w) => /quota exhausted/.test(w))).toHaveLength(2);
+      await probe.advance(3_600_000);
+      const ok = await ws.nextDial();
+      await ok.conn!.next();
+      ok.conn!.send({
+        event: 'connection.admitted',
+        payloadVersion: 3,
+        data: { leaseId: 'l', serverNow: 1, clientNonce: 'c' },
+      });
+      await waitFor(() => probe.admitted.length === 1, 'admitted');
+      expect(probe.done).toBe(false);
+      expect(probe.reconnects.at(-1)?.reason).toBe('quota_exceeded');
+    } finally {
+      await probe.stop();
+    }
+  });
+
+  test('the interval is configurable', async () => {
+    ws.dialScript.push(QUOTA);
+    const probe = new StreamProbe(ws, {
+      raw: false,
+      params: {},
+      config: { quotaRetryIntervalMs: 120_000 },
+    }).start();
+    try {
+      await waitFor(() => probe.scheduled.length === 1, 'quota wait');
+      expect(probe.scheduled[0].delayMs).toBe(120_000);
+      expect(probe.quotaWaits[0].nextAttemptInMs).toBe(120_000);
+    } finally {
+      await probe.stop();
+    }
+  });
+
+  test('switched off, the stream ends with the typed error', async () => {
+    ws.dialScript.push(QUOTA);
+    const probe = new StreamProbe(ws, {
+      raw: false,
+      params: {},
+      config: { reconnectOnQuotaExhausted: false },
+    }).start();
+    await waitFor(() => probe.done, 'terminal');
+    expect((probe.terminal as FinlightApiError).status).toBe(403);
+    expect(probe.scheduled).toHaveLength(0);
+    expect(probe.quotaWaits).toHaveLength(0);
+    await probe.stop();
+  });
+
+  test('a connection_limit preemption stays terminal', async () => {
+    const probe = new StreamProbe(ws, { raw: false, params: {} }).start();
+    const dial = await ws.nextDial();
+    await dial.conn!.next();
+    dial.conn!.send({
+      event: 'connection.preempted',
+      payloadVersion: 3,
+      data: { reason: 'connection_limit', newLeaseId: 'x', timestamp: 1 },
+    });
+    await waitFor(() => probe.done, 'terminal');
+    expect((probe.terminal as Error).name).toBe('PreemptedError');
+    expect(probe.scheduled).toHaveLength(0);
+    await probe.stop();
+  });
+});

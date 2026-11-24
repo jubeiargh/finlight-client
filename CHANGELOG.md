@@ -24,6 +24,7 @@
 - Retries: 5xx, network errors and attempt timeouts up to 3 times with jittered backoff (POST search included); 400, 401, 403, 404 and monthly 429 never. A burst 429 waits for `Retry-After` (10 s if missing) and retries once; this is on by default and `retryOnBurst: 'off'` turns it off. One `X-Request-Id` per logical call, kept on retries.
 - Every call takes an `AbortSignal`. Optional `totalTimeoutMs` per call.
 - Streams: application ping every 25 s, reconnect after 60 s without pong, connection renewal after 115 min, duplicate filter, `onAdmitted`, `onReconnect` (with `lastSeenAt`) and `onError` hooks, typed terminal errors.
+- Streams survive a used-up WebSocket quota: after a dial refused with "quota exceeded" or a `quota_exceeded` preemption they retry every hour until the quota allows it again. Each attempt is logged as a warning and reported to `onQuotaWait`. On by default; `reconnectOnQuotaExhausted: false` ends the stream with the typed error instead, and `quotaRetryIntervalMs` sets the interval. A `connection_limit` preemption still ends the stream. REST never waits for a new quota: a monthly 429 fails at once, also in `searchAll`.
 - `rawJson(value)` returns the JSON as received, including keys this version does not know.
 - `toDate()` parses timestamps strictly (RFC 3339).
 - Unknown request parameters throw before any request.

@@ -8,11 +8,11 @@ import { buildSubscribe, checkOptions, type RawStreamParams, type StreamParams }
 import { SourcesService } from './sources';
 import { StreamSession, type FinlightStream, type StreamOptions } from './stream';
 
-const STREAM_OPTION_KEYS = ['signal', 'takeover', 'onAdmitted', 'onReconnect', 'onError'];
+const STREAM_OPTION_KEYS = ['signal', 'takeover', 'onAdmitted', 'onReconnect', 'onError', 'onQuotaWait'];
 
 function checkStreamOptions(options: unknown): StreamOptions {
   const opts = checkOptions(options, STREAM_OPTION_KEYS, 'stream');
-  for (const hook of ['onAdmitted', 'onReconnect', 'onError']) {
+  for (const hook of ['onAdmitted', 'onReconnect', 'onError', 'onQuotaWait']) {
     if (opts[hook] !== undefined && typeof opts[hook] !== 'function') {
       throw new FinlightValidationError(`${hook} must be a function`);
     }

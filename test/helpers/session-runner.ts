@@ -20,6 +20,7 @@ export class StreamProbe {
   readonly errors: FinlightError[] = [];
   readonly scheduled: Array<{ delayMs: number; reason: string }> = [];
   readonly duplicates: string[] = [];
+  readonly quotaWaits: Array<{ nextAttemptInMs: number; attempt: number; kind: string }> = [];
   frames = 0;
   pongs = 0;
   pingsSent = 0;
@@ -54,6 +55,8 @@ export class StreamProbe {
       onAdmitted: (a: AdmittedInfo) => this.admitted.push(a),
       onReconnect: (r: ReconnectInfo) => this.reconnects.push(r),
       onError: (e: FinlightError) => this.errors.push(e),
+      onQuotaWait: (q: { nextAttemptInMs: number; attempt: number; error: FinlightError }) =>
+        this.quotaWaits.push({ nextAttemptInMs: q.nextAttemptInMs, attempt: q.attempt, kind: q.error.kind }),
       ...(this.opts.takeover ? { takeover: true } : {}),
     };
     this.stream = this.opts.raw
@@ -113,6 +116,8 @@ export interface SessionOptions {
   /** Keys the fixture's subscribe carries that the SDK refuses to send. */
   forbiddenKeys?: string[];
   autoPong?: boolean;
+  /** Client config overrides for this session. */
+  config?: Partial<FinlightClientConfig>;
   /** Extra checks after the scripted steps. */
   after?: (ctx: SessionContext) => Promise<void>;
   /** Extra checks right after the first admitted item expectation. */
@@ -149,6 +154,7 @@ export async function runSession(ws: WsMock, fixture: any, options: SessionOptio
     params,
     apiKey,
     nonce: (firstSubscribe.clientNonce as string | undefined) ?? 'c-test',
+    ...(options.config ? { config: options.config } : {}),
   }).start();
 
   let conn: ServerConn | null = null;
@@ -330,6 +336,7 @@ async function checkExpect(
       expect(probe.done).toBe(false);
       if (step.backoff === 'long') expect(s.delayMs).toBeGreaterThanOrEqual(60_000);
       if (step.firstRetryMinMs) expect(s.delayMs).toBeGreaterThanOrEqual(step.firstRetryMinMs);
+      if (step.exactDelayMs) expect(s.delayMs).toBe(step.exactDelayMs);
       if (step.backoff === true) expect(s.delayMs).toBeGreaterThan(0);
       if (step.reason) expect(s.reason).toBe(step.reason);
       if (step.hint === 'takeover') {
@@ -347,7 +354,10 @@ async function checkExpect(
         const dial = await ws.nextDial('redial');
         if (step.resubscribe) {
           const msg = await dial.conn!.next('re-subscribe');
-          expect(msg).toEqual(ctx.subscribe);
+          // Only clientNonce may differ between connections.
+          expect(withoutKeys(msg as Record<string, unknown>, ['clientNonce'])).toEqual(
+            withoutKeys(ctx.subscribe, ['clientNonce']),
+          );
         }
       }
       break;

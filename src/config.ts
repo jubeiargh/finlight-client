@@ -56,6 +56,14 @@ export interface FinlightClientConfig {
   reconnectMaxDelayMs?: number;
   /** Delay after "too many connections" and 429 dial refusals. Default 60000. */
   longBackoffMs?: number;
+  /**
+   * When the WebSocket quota is used up (dial 403 "quota exceeded" or a `quota_exceeded`
+   * preemption) the stream keeps trying every `quotaRetryIntervalMs` until the quota allows it
+   * again. Default `true`. With `false` the stream ends with the typed error instead.
+   */
+  reconnectOnQuotaExhausted?: boolean;
+  /** Interval of those quota attempts. Default 3600000 (1 h). */
+  quotaRetryIntervalMs?: number;
   /** Entries of the per-stream duplicate filter. Default 1000. */
   dedupeCacheSize?: number;
   /** Largest incoming stream message. Default 32 MiB (at least 16 MiB). */
@@ -95,6 +103,8 @@ export interface ResolvedConfig {
   reconnectBaseDelayMs: number;
   reconnectMaxDelayMs: number;
   longBackoffMs: number;
+  reconnectOnQuotaExhausted: boolean;
+  quotaRetryIntervalMs: number;
   dedupeCacheSize: number;
   maxMessageBytes: number;
   connectTimeoutMs: number;
@@ -124,6 +134,8 @@ export const DEFAULTS = {
   reconnectBaseDelayMs: 1_000,
   reconnectMaxDelayMs: 30_000,
   longBackoffMs: 60_000,
+  reconnectOnQuotaExhausted: true,
+  quotaRetryIntervalMs: 60 * 60_000,
   dedupeCacheSize: 1000,
   maxMessageBytes: 32 * 1024 * 1024,
   connectTimeoutMs: 30_000,
@@ -152,6 +164,8 @@ const CONFIG_KEYS: ReadonlyArray<keyof FinlightClientConfig> = [
   'reconnectBaseDelayMs',
   'reconnectMaxDelayMs',
   'longBackoffMs',
+  'reconnectOnQuotaExhausted',
+  'quotaRetryIntervalMs',
   'dedupeCacheSize',
   'maxMessageBytes',
   'connectTimeoutMs',
@@ -187,6 +201,13 @@ function num(config: Record<string, unknown>, key: string, fallback: number, min
   if (typeof v !== 'number' || !Number.isFinite(v) || v < min) {
     throw new FinlightValidationError(`${key} must be a number of at least ${min}`, key);
   }
+  return v;
+}
+
+function bool(config: Record<string, unknown>, key: string, fallback: boolean): boolean {
+  const v = config[key];
+  if (v === undefined) return fallback;
+  if (typeof v !== 'boolean') throw new FinlightValidationError(`${key} must be a boolean`, key);
   return v;
 }
 
@@ -242,6 +263,8 @@ export function resolveConfig(input: unknown): { apiKey: string; config: Resolve
     reconnectBaseDelayMs: num(input, 'reconnectBaseDelayMs', DEFAULTS.reconnectBaseDelayMs, 0),
     reconnectMaxDelayMs: num(input, 'reconnectMaxDelayMs', DEFAULTS.reconnectMaxDelayMs, 0),
     longBackoffMs: num(input, 'longBackoffMs', DEFAULTS.longBackoffMs, 0),
+    reconnectOnQuotaExhausted: bool(input, 'reconnectOnQuotaExhausted', DEFAULTS.reconnectOnQuotaExhausted),
+    quotaRetryIntervalMs: num(input, 'quotaRetryIntervalMs', DEFAULTS.quotaRetryIntervalMs, 1),
     dedupeCacheSize: Math.floor(num(input, 'dedupeCacheSize', DEFAULTS.dedupeCacheSize, 0)),
     maxMessageBytes: Math.max(MIN_MESSAGE_BYTES, num(input, 'maxMessageBytes', DEFAULTS.maxMessageBytes, 1)),
     connectTimeoutMs: num(input, 'connectTimeoutMs', DEFAULTS.connectTimeoutMs, 1),
