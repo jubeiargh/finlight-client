@@ -214,7 +214,7 @@ try {
 |---|---|
 | 400, 401, 403, 404 | 从不 |
 | 429 monthly / unknown | 从不 |
-| 429 burst | 一次，至少等待 10 秒（`retryOnBurst`，见更新日志） |
+| 429 burst | 一次，等待 `Retry-After` 指定的时间（缺失时为 10 秒）。默认开启，可用 `retryOnBurst: 'off'` 关闭 |
 | 5xx, 网络错误、超时 | 最多 3 次，等待时间递增并带随机抖动 |
 
 每个调用都接受 `AbortSignal`。中止会立即结束等待，不会重试，并以信号的 reason 拒绝。

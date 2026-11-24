@@ -31,7 +31,7 @@ export interface FinlightClientConfig {
   retryMaxDelayMs?: number;
   /**
    * Burst 429 handling: `once` waits at least `burstWaitMs` and retries one time,
-   * `off` throws at once. Default `once` (pending decision, see CHANGELOG).
+   * `off` throws at once. Default `once`.
    * This retry does not count against `maxRetries`.
    */
   retryOnBurst?: RetryOnBurst;

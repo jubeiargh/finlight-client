@@ -82,7 +82,7 @@
   "e_case": "응답",
   "e_retry": "재시도",
   "e_never": "하지 않음",
-  "e_burst": "한 번, 최소 10초 대기 후 (`retryOnBurst`, 변경 기록 참고)",
+  "e_burst": "한 번, `Retry-After` 시간(없으면 10초) 대기 후. 기본으로 켜져 있으며 `retryOnBurst: 'off'`로 끌 수 있음",
   "e_network": "네트워크 오류, 타임아웃",
   "e_backoff": "최대 3번, 대기 시간을 늘리고 무작위 지연을 더해서",
   "cancelNote": "모든 호출은 `AbortSignal`을 받습니다. 중단하면 대기가 즉시 끝나고, 재시도하지 않으며, 신호의 reason으로 reject됩니다.",

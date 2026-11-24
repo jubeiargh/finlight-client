@@ -82,7 +82,7 @@
   "e_case": "Answer",
   "e_retry": "Retry",
   "e_never": "never",
-  "e_burst": "once, after at least 10 s (`retryOnBurst`, see the changelog)",
+  "e_burst": "once, after `Retry-After` (10 s if missing); on by default, `retryOnBurst: 'off'` turns it off",
   "e_network": "network errors, timeouts",
   "e_backoff": "up to 3 times with growing, jittered waits",
   "cancelNote": "Every call takes an `AbortSignal`. An abort ends waits at once, is never retried, and rejects with the signal's reason.",

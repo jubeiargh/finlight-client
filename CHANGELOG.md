@@ -21,7 +21,7 @@
 - `articles.searchAll` with `maxPages` (default 10), a page-by-page variant (`.pages()`) and `nextCursor` to continue.
 - Company lookups (`companies.search`, `getMany`, `get` with ETag revalidation) and the source catalog (`sources.list`).
 - One error model: `FinlightApiError` with `status`, `code`, `title`, `detail`, `requestId`, `errors[]`, `apiKind` and, for 429, `limitType` (`monthly`, `burst`, `unknown`). Plus `FinlightValidationError`, `FinlightNetworkError`, `FinlightTimeoutError`, `FinlightDecodeError`, `WebhookVerificationError` and `PreemptedError`. All share the base `FinlightError` and a `kind` field.
-- Retries: 5xx, network errors and attempt timeouts up to 3 times with jittered backoff (POST search included); 400, 401, 403, 404 and monthly 429 never. One `X-Request-Id` per logical call, kept on retries.
+- Retries: 5xx, network errors and attempt timeouts up to 3 times with jittered backoff (POST search included); 400, 401, 403, 404 and monthly 429 never. A burst 429 waits for `Retry-After` (10 s if missing) and retries once; this is on by default and `retryOnBurst: 'off'` turns it off. One `X-Request-Id` per logical call, kept on retries.
 - Every call takes an `AbortSignal`. Optional `totalTimeoutMs` per call.
 - Streams: application ping every 25 s, reconnect after 60 s without pong, connection renewal after 115 min, duplicate filter, `onAdmitted`, `onReconnect` (with `lastSeenAt`) and `onError` hooks, typed terminal errors.
 - `rawJson(value)` returns the JSON as received, including keys this version does not know.
@@ -33,10 +33,6 @@
 
 - Everything for API v1 and v2: the old services, models, parameter types and transforms.
 - The SIGINT handler and `process.exit` in the WebSocket client.
-
-### Pending decisions
-
-- **Default for 429 burst answers.** The SDK waits at least 10 s and retries once (`retryOnBurst: 'once'`). Whether `'once'` stays the default is not decided yet; it may change to `'off'` before 4.0.0 is released. Set `retryOnBurst` explicitly if you depend on it.
 
 ### Contract
 

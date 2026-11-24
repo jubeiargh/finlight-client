@@ -212,7 +212,7 @@ Every SDK error extends `FinlightError` and has a `kind` field: `api`, `validati
 |---|---|
 | 400, 401, 403, 404 | never |
 | 429 monthly / unknown | never |
-| 429 burst | once, after at least 10 s (`retryOnBurst`, see the changelog) |
+| 429 burst | once, after `Retry-After` (10 s if missing); on by default, `retryOnBurst: 'off'` turns it off |
 | 5xx, network errors, timeouts | up to 3 times with growing, jittered waits |
 
 Every call takes an `AbortSignal`. An abort ends waits at once, is never retried, and rejects with the signal's reason.
