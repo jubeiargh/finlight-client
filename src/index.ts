@@ -1,38 +1,107 @@
-import { ApiClient } from './client/apiClient';
-import { WebSocketClient } from './client/webSocketClient';
-import { RawWebSocketClient } from './client/rawWebSocketClient';
-import { BaseWebSocketClientOptions } from './client/baseWebSocketClient';
-import { ArticleService } from './services/articleService';
-import { SourceService } from './services/sourceService';
-import { WebhookService } from './services/webhookService';
-import { ApiClientConfig, defaultApiConfig } from './types/config';
+export { FinlightClient } from './client';
+export type { FinlightClientConfig, RetryOnBurst } from './config';
+export type { Clock } from './clock';
+export type { Logger } from './logger';
+export { VERSION } from './version';
 
-export { ApiClientConfig } from './types/config';
-export type * from './types/types';
-export { WebSocketResponse } from './client/webSocketClient';
-export { BaseWebSocketClientOptions as WebSocketClientOptions } from './client/baseWebSocketClient';
-export { WebhookService, WebhookVerificationError } from './services/webhookService';
-export { transformArticle, transformArticles, transformRawArticle, transformRawArticles } from './utils';
-export { Logger, LogLevel, noopLogger, createLogger } from './logger';
+export type {
+  ArticlesService,
+  CallOptions,
+  LookupOptions,
+  SearchAllOptions,
+  SearchAllResult,
+} from './articles';
+export type { CompaniesService, CompanyGetOptions, CacheInfo } from './companies';
+export { cacheInfo, skippedEntries } from './companies';
+export type { SourcesService } from './sources';
 
-export class FinlightApi {
-  private apiClient: ApiClient;
-  public articles: ArticleService;
-  public sources: SourceService;
-  public websocket: WebSocketClient;
-  public rawWebsocket: RawWebSocketClient;
-  public webhook: WebhookService;
+export type { SearchParams, StreamParams, RawStreamParams, CompanySearchParams, DateInput } from './params';
 
-  constructor(
-    config: Partial<ApiClientConfig> & Pick<ApiClientConfig, 'apiKey'>,
-    websocketOptions?: BaseWebSocketClientOptions,
-  ) {
-    const finalConfig = { ...defaultApiConfig, ...config };
-    this.apiClient = new ApiClient(finalConfig);
-    this.articles = new ArticleService(this.apiClient);
-    this.sources = new SourceService(this.apiClient);
-    this.websocket = new WebSocketClient(finalConfig, websocketOptions);
-    this.rawWebsocket = new RawWebSocketClient(finalConfig, websocketOptions);
-    this.webhook = new WebhookService();
-  }
-}
+export type {
+  Article,
+  ArticleSource,
+  Media,
+  Sentiment,
+  Company,
+  Listing,
+  CompanyListing,
+  EventTag,
+  CompanyRecord,
+  Source,
+  Pagination,
+  ArticlePage,
+  SkippedEntry,
+  StreamEvent,
+  StreamEventKind,
+  WebhookEvent,
+} from './models';
+export { contentPresent, sentimentPresent, companiesPresent, eventsPresent } from './models';
+
+export type { FinlightStream, StreamOptions, AdmittedInfo, ReconnectInfo, ReconnectReason } from './stream';
+
+export {
+  Webhooks,
+  WrongPayloadVersion,
+  isWrongPayloadVersion,
+  DEFAULT_WEBHOOK_TOLERANCE_MS,
+} from './webhooks';
+export type { WebhookHeaders, WebhookVerifyOptions } from './webhooks';
+
+export {
+  FinlightError,
+  FinlightApiError,
+  FinlightValidationError,
+  FinlightNetworkError,
+  FinlightTimeoutError,
+  FinlightDecodeError,
+  WebhookVerificationError,
+  PreemptedError,
+  isFinlightError,
+  isFinlightApiError,
+} from './errors';
+export type {
+  FinlightErrorKind,
+  ApiErrorKind,
+  ApiFieldError,
+  RateLimitType,
+  WebhookVerificationReason,
+} from './errors';
+
+export { toDate } from './time';
+export { rawJson } from './internal/raw';
+
+export {
+  INCLUDE_BLOCKS,
+  ORDER_BY_VALUES,
+  SORT_ORDERS,
+  COMPANY_ROLES,
+  EVENT_TYPES,
+  EVENT_DIRECTIONS,
+  IMPORTANCE_LEVELS,
+  SENTIMENT_LABELS,
+  SOURCE_TYPES,
+  STREAM_EVENT_NAMES,
+  ARTICLE_EVENT_NAMES,
+  CONNECTION_EVENT_NAMES,
+  CONNECTION_ERROR_CODES,
+  PREEMPT_REASONS,
+  WEBHOOK_EVENT_NAMES,
+  PROBLEM_CODES,
+  PAYLOAD_VERSION,
+} from './vocab';
+export type {
+  IncludeBlock,
+  OrderBy,
+  SortOrder,
+  CompanyRole,
+  EventType,
+  EventDirection,
+  Importance,
+  SentimentLabel,
+  SourceType,
+  StreamEventName,
+  ConnectionErrorCode,
+  PreemptReason,
+  WebhookEventName,
+  ProblemCode,
+} from './vocab';

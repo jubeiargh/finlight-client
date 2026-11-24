@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "baseUrl": ".",
+    "types": ["node"],
+    "paths": { "finlight-client": ["../src/index.ts"] }
+  },
+  "include": ["./*.ts"]
+}

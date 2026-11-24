@@ -1,0 +1,95 @@
+name: Test
+
+on:
+  push:
+    branches: [main, v3]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci
+      - name: Contract kit matches its MANIFEST
+        run: npm run conformance:check
+      - name: Every kit case has a test
+        run: node scripts/case-table.js --check
+      - name: Version files match package.json
+        run: node scripts/sync-version.js --check
+      - name: README files match the skeleton
+        run: npm run readme:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - name: Unit and conformance tests (no network, no keys)
+        run: npm test
+        env:
+          FINLIGHT_API_KEY: ''
+      - run: npm run build
+      - name: Examples compile
+        run: npm run examples:build
+      - name: Type tests against dist (current TypeScript)
+        run: npx tsc -p test/types/tsconfig.json
+      - name: Type tests against dist (oldest supported TypeScript 5.0)
+        run: npx -y -p typescript@5.0.4 tsc -p test/types/tsconfig.json
+      - name: CommonJS and ESM imports
+        run: |
+          dir=$(mktemp -d)
+          npm pack --pack-destination "$dir"
+          cp scripts/smoke-import.cjs scripts/smoke-import.mjs "$dir"
+          cd "$dir"
+          npm init -y >/dev/null
+          npm install ./finlight-client-*.tgz
+          node smoke-import.cjs
+          node smoke-import.mjs
+      - name: Package contents (npm)
+        run: npm run pack:check
+      - name: Package contents (JSR)
+        run: npx -y jsr publish --dry-run --allow-dirty
+
+  lowest-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - name: Install the lowest declared ws version
+        run: npm install --no-save ws@8.18.0
+      - run: npm test
+
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: No AI attribution in new commit messages
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          # Commits up to d769cbe predate this rule and are already public.
+          base="${PR_BASE:-$PUSH_BEFORE}"
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$base" 2>/dev/null; then
+            base=d769cbe
+          fi
+          if git log --format=%B "$base..HEAD" | grep -inE 'co-authored-by|generated (with|by)|claude|chatgpt|copilot'; then
+            echo "commit messages must not carry AI attribution" >&2
+            exit 1
+          fi
