@@ -23,6 +23,7 @@
     "- `hasMore: false`、`nextCursor: null`、または `maxPages`（既定 10）に達すると止まります。上限に達すると警告を記録し、`result.nextCursor` で続きを取得できます。",
     "- 各ページは課金対象の呼び出しです。結果は一度だけ反復できます。",
     "- `from` と `to` は `Date`（ミリ秒付き UTC で送信）または文字列（そのまま送信）を受け取り、`orderBy` のタイムスタンプに適用されます。",
+    "- `sourceTypes` と `excludeSourceTypes` はソースの種類で絞り込みます（`SOURCE_TYPES`: `newswire`、`press_release`、`financial_media`、`general_media`、`aggregator`、`blog`、`government`）。未分類ソースの記事（`source.type` が `null`）は `sourceTypes` に一致せず、`excludeSourceTypes` では残ります。どちらも検索専用で、ストリームでは使えません。",
     "- デコードできないエントリはスキップされ、ログに記録され、`page.skipped` に入ります。ページの残りはそのまま使えます。"
   ],
   "h_lookups": "記事・企業・ソースの参照",

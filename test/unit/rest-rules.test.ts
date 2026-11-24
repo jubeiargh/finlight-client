@@ -45,6 +45,8 @@ const ALL_SEARCH = {
   sources: ['a'],
   optInSources: ['b'],
   excludeSources: ['c'],
+  sourceTypes: ['newswire'],
+  excludeSourceTypes: ['press_release'],
   from: new Date('2026-01-01T00:00:00Z'),
   to: '2026-02-01',
   languages: ['en'],
@@ -146,6 +148,16 @@ describe('R-REQ-1 / R-REQ-3: requests', () => {
     const inherited = Object.create({ includeContent: true });
     inherited.query = 'q';
     expect(buildSubscribe(inherited, false)).toEqual({ payloadVersion: 3, query: 'q' });
+  });
+
+  test('sourceTypes and excludeSourceTypes are search-only: both streams reject them', () => {
+    for (const key of ['sourceTypes', 'excludeSourceTypes']) {
+      for (const raw of [false, true]) {
+        expect(() => buildSubscribe({ query: 'q', [key]: ['newswire'] } as any, raw)).toThrow(
+          FinlightValidationError,
+        );
+      }
+    }
   });
 
   test.each([

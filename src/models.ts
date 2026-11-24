@@ -24,7 +24,10 @@ import type {
 export interface ArticleSource {
   /** Domain, e.g. `www.reuters.com`. Join key to `sources.list()`. */
   domain: string;
-  /** Open vocabulary; always `null` today. */
+  /**
+   * Source type when the article was indexed (open vocabulary, `SOURCE_TYPES`). Null when the
+   * source is not classified or the article was indexed before source types existed.
+   */
   type: SourceType | null;
 }
 
@@ -139,6 +142,7 @@ export interface CompanyRecord {
 export interface Source {
   domain: string;
   name: string | null;
+  /** Source type (open vocabulary, `SOURCE_TYPES`). Null when the source is not classified. */
   type: SourceType | null;
   isDefault: boolean | null;
   /** Present only with full article access. Missing means unknown, never "no content". */

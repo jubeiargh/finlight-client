@@ -66,9 +66,20 @@ export type Importance = (typeof IMPORTANCE_LEVELS)[number] | (string & {});
 export const SENTIMENT_LABELS = ['positive', 'negative', 'neutral'] as const;
 export type SentimentLabel = (typeof SENTIMENT_LABELS)[number] | (string & {});
 
-/** `source.type`. Always null today; the vocabulary is still open. */
-export const SOURCE_TYPES = [] as const;
-export type SourceType = string;
+/**
+ * `source.type`, `/v3/sources` `type` and search filters `sourceTypes`/`excludeSourceTypes`.
+ * `source.type` is null when the source is not classified.
+ */
+export const SOURCE_TYPES = [
+  'newswire',
+  'press_release',
+  'financial_media',
+  'general_media',
+  'aggregator',
+  'blog',
+  'government',
+] as const;
+export type SourceType = (typeof SOURCE_TYPES)[number] | (string & {});
 
 /** WebSocket `event` names. */
 export const STREAM_EVENT_NAMES = [

@@ -23,6 +23,7 @@
     "- It stops at `hasMore: false`, at `nextCursor: null` or after `maxPages` (default 10). At the limit it logs a warning, and `result.nextCursor` lets you continue.",
     "- Every page is a metered call. A result can be iterated only once.",
     "- `from` and `to` take a `Date` (sent as UTC with milliseconds) or a string (sent as is). They apply to the `orderBy` timestamp.",
+    "- `sourceTypes` and `excludeSourceTypes` filter by the type of the source (`SOURCE_TYPES`: `newswire`, `press_release`, `financial_media`, `general_media`, `aggregator`, `blog`, `government`). Articles of unclassified sources (`source.type` is `null`) never match `sourceTypes` and are kept by `excludeSourceTypes`. Both work on search only, not on streams.",
     "- Entries that cannot be decoded are skipped, logged and listed in `page.skipped`. The rest of the page stays usable."
   ],
   "h_lookups": "Look up articles, companies and sources",

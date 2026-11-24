@@ -188,6 +188,7 @@ describe('R: requests', () => {
     expect(sources.map((s) => s.hasContent)).toEqual([false, true, true]);
     expect(sources.find((s) => s.domain === 'custom.example.net')?.isCustom).toBe(true);
     expect(sources.map((s) => s.domain)).toEqual(f.response.body.sources.map((s: any) => s.domain));
+    expect(sources.map((s) => s.type)).toEqual(f.response.body.sources.map((s: any) => s.type));
   });
 
   test(caseName('R-11'), async () => {

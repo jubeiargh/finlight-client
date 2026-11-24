@@ -75,6 +75,7 @@ for await (const p of client.articles.searchAll({ query: 'eventType:mna' }).page
 - `hasMore: false`, `nextCursor: null` 또는 `maxPages`(기본 10)에 도달하면 멈춥니다. 한도에 도달하면 경고를 기록하며, `result.nextCursor`로 이어서 가져올 수 있습니다.
 - 각 페이지는 과금되는 호출입니다. 결과는 한 번만 순회할 수 있습니다.
 - `from`과 `to`는 `Date`(밀리초를 포함한 UTC로 전송) 또는 문자열(그대로 전송)을 받으며, `orderBy` 타임스탬프에 적용됩니다.
+- `sourceTypes`와 `excludeSourceTypes`는 소스 유형으로 필터링합니다(`SOURCE_TYPES`: `newswire`, `press_release`, `financial_media`, `general_media`, `aggregator`, `blog`, `government`). 분류되지 않은 소스의 기사(`source.type`이 `null`)는 `sourceTypes`에 일치하지 않으며 `excludeSourceTypes`에서는 유지됩니다. 둘 다 검색 전용이며 스트림에서는 사용할 수 없습니다.
 - 디코딩할 수 없는 항목은 건너뛰고 로그에 남기며 `page.skipped`에 담습니다. 페이지의 나머지는 그대로 사용할 수 있습니다.
 
 ## 기사, 기업, 출처 조회

@@ -101,6 +101,8 @@ describe('V: vocabulary', () => {
     expect([...IMPORTANCE_LEVELS]).toEqual(vocab.request.minImportance.values);
     expect([...IMPORTANCE_LEVELS]).toEqual(vocab.response.importance.values);
     expect([...SENTIMENT_LABELS]).toEqual(vocab.response.sentimentLabels.values);
+    expect([...SOURCE_TYPES]).toEqual(vocab.request.sourceTypes.values);
+    expect([...SOURCE_TYPES]).toEqual(vocab.request.excludeSourceTypes.values);
     expect([...SOURCE_TYPES]).toEqual(vocab.response.sourceTypes.values);
     expect([...STREAM_EVENT_NAMES]).toEqual(vocab.websocket.events.values);
     expect([...ARTICLE_EVENT_NAMES]).toEqual(vocab.websocket.articleEvents.values);

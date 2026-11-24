@@ -8,6 +8,7 @@ import type {
   IncludeBlock,
   OrderBy,
   SortOrder,
+  SourceType,
 } from './vocab';
 import { PAYLOAD_VERSION } from './vocab';
 
@@ -33,6 +34,13 @@ export interface SearchParams {
   /** Add non-default sources to the default pool. */
   optInSources?: List<string>;
   excludeSources?: List<string>;
+  /**
+   * Keep only articles whose source has one of these types. Articles of unclassified
+   * sources never match. Filters inside the source pool; never adds a source.
+   */
+  sourceTypes?: List<SourceType>;
+  /** Drop articles whose source has one of these types. Unclassified sources are kept. */
+  excludeSourceTypes?: List<SourceType>;
   /** Lower bound on the `orderBy` timestamp. */
   from?: DateInput;
   /** Upper bound on the `orderBy` timestamp. */
@@ -106,6 +114,8 @@ const SEARCH_KEYS: Record<keyof SearchParams, Kind> = {
   sources: 'strings',
   optInSources: 'strings',
   excludeSources: 'strings',
+  sourceTypes: 'strings',
+  excludeSourceTypes: 'strings',
   from: 'date',
   to: 'date',
   languages: 'strings',
