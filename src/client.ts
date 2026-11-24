@@ -1,7 +1,7 @@
 import { inspect } from 'node:util';
 import { ArticlesService } from './articles';
 import { CompaniesService } from './companies';
-import { resolveConfig, type FinlightClientConfig, type ResolvedConfig } from './config';
+import { resolveConfig, type FinlightConfig, type ResolvedConfig } from './config';
 import { HttpTransport } from './http';
 import { FinlightValidationError } from './errors';
 import { buildSubscribe, checkOptions, type RawStreamParams, type StreamParams } from './params';
@@ -34,7 +34,7 @@ export class FinlightClient {
   readonly #apiKey: string;
   readonly #config: ResolvedConfig;
 
-  constructor(config: FinlightClientConfig) {
+  constructor(config: FinlightConfig) {
     const { apiKey, config: resolved } = resolveConfig(config);
     this.#apiKey = apiKey;
     this.#config = resolved;

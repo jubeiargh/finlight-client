@@ -1,8 +1,9 @@
 import type { CallOptions } from './articles';
 import { decodeCompanyRecord, decodeEntries, envelopeField, toDecodeError } from './decode';
-import { FinlightApiError, FinlightValidationError } from './errors';
+import { FinlightDecodeError } from './errors';
+import { FinlightValidationError } from './errors';
 import type { HttpTransport } from './http';
-import type { CompanyRecord, SkippedEntry } from './models';
+import type { CompanyList, CompanyRecord, SkippedEntry } from './models';
 import {
   checkCompanyId,
   checkCompanyIds,
@@ -13,8 +14,9 @@ import {
 
 export interface CompanyGetOptions extends CallOptions {
   /**
-   * Send `If-None-Match` with this ETag. On 304 the SDK returns its cached record for it.
-   * Without this option the SDK revalidates its own cache automatically.
+   * Your own ETag. The SDK sends it as `If-None-Match`; on 304 the call returns `null`
+   * ("not modified"). Without this option the SDK revalidates its own cached copy and
+   * returns that copy on 304.
    */
   ifNoneMatch?: string;
 }
@@ -28,21 +30,17 @@ export interface CacheInfo {
 }
 
 const CACHE_INFO = new WeakMap<object, CacheInfo>();
-const SKIPPED = new WeakMap<object, SkippedEntry[]>();
 
 /** ETag and Cache-Control of a record returned by `companies.get`, or `null`. */
 export function cacheInfo(record: CompanyRecord): CacheInfo | null {
   return CACHE_INFO.get(record) ?? null;
 }
 
-/** Entries of a list result (`companies.*`, `sources.list`) that could not be decoded. */
-export function skippedEntries(list: readonly object[]): SkippedEntry[] {
-  return SKIPPED.get(list) ?? [];
-}
-
-export function withSkipped<T extends object>(items: T[], skipped: SkippedEntry[]): T[] {
-  SKIPPED.set(items, skipped);
-  return items;
+/** An array of entries plus the entries that could not be decoded (`skipped`, also logged). */
+export function withSkipped<T>(items: T[], skipped: SkippedEntry[]): T[] & { skipped: SkippedEntry[] } {
+  // Not enumerable: the array still serializes and spreads like a plain array.
+  Object.defineProperty(items, 'skipped', { value: skipped, enumerable: false });
+  return items as T[] & { skipped: SkippedEntry[] };
 }
 
 /** Company master data. Needs the `entityAccess` entitlement (403 otherwise). */
@@ -52,7 +50,7 @@ export class CompaniesService {
   constructor(private readonly http: HttpTransport) {}
 
   /** Resolves a ticker, name, ISIN or vendor notation. At most 10 results, no pages. */
-  async search(params: CompanySearchParams, options?: CallOptions): Promise<CompanyRecord[]> {
+  async search(params: CompanySearchParams, options?: CallOptions): Promise<CompanyList> {
     const p = checkCompanySearch(params);
     const opts = checkOptions(options, ['signal'], 'companies.search');
     const query: Array<[string, string]> = [['q', p.q]];
@@ -61,16 +59,13 @@ export class CompaniesService {
   }
 
   /** Batch resolve 1 to 10 ids. Unknown ids are left out; the order is not guaranteed. */
-  async getMany(ids: readonly number[], options?: CallOptions): Promise<CompanyRecord[]> {
+  async getMany(ids: readonly number[], options?: CallOptions): Promise<CompanyList> {
     const checked = checkCompanyIds(ids);
     const opts = checkOptions(options, ['signal'], 'companies.getMany');
     return this.list([['ids', checked.join(',')]], opts.signal as AbortSignal | undefined);
   }
 
-  private async list(
-    query: Array<[string, string]>,
-    signal: AbortSignal | undefined,
-  ): Promise<CompanyRecord[]> {
+  private async list(query: Array<[string, string]>, signal: AbortSignal | undefined): Promise<CompanyList> {
     const res = await this.http.request({ method: 'GET', path: '/v3/companies', query, signal });
     try {
       const { items, skipped } = decodeEntries(
@@ -89,7 +84,9 @@ export class CompaniesService {
    * `GET /v3/companies/{companyId}`. Revalidates with the ETag of a cached copy and serves
    * that copy on 304. `cacheInfo(record)` exposes the ETag. A 404 is a `FinlightApiError`.
    */
-  async get(companyId: number, options?: CompanyGetOptions): Promise<CompanyRecord> {
+  get(companyId: number, options?: CallOptions): Promise<CompanyRecord>;
+  get(companyId: number, options: CompanyGetOptions): Promise<CompanyRecord | null>;
+  async get(companyId: number, options?: CompanyGetOptions): Promise<CompanyRecord | null> {
     const id = checkCompanyId(companyId);
     const opts = checkOptions(options, ['signal', 'ifNoneMatch'], 'companies.get');
     if (opts.ifNoneMatch !== undefined && (typeof opts.ifNoneMatch !== 'string' || !opts.ifNoneMatch)) {
@@ -108,24 +105,14 @@ export class CompaniesService {
     });
     const cacheControl = res.headers.get('cache-control');
     if (res.status === 304) {
+      // Your own ETag: "not modified" is null, never an error.
+      if (opts.ifNoneMatch !== undefined) return null;
       if (cached && cached.etag === etag) {
         CACHE_INFO.set(cached.record, { etag: cached.etag, cacheControl, notModified: true });
         this.touch(id, cached);
         return cached.record;
       }
-      throw new FinlightApiError({
-        status: 304,
-        code: null,
-        type: null,
-        title: 'Not Modified',
-        detail: 'The record did not change, and the SDK holds no cached copy for this ETag.',
-        requestId: res.requestId,
-        errors: [],
-        raw: null,
-        channel: 'rest',
-        limitType: null,
-        retryAfterMs: null,
-      });
+      throw new FinlightDecodeError('unexpected 304 Not Modified without a cached record', null);
     }
     let record: CompanyRecord;
     try {

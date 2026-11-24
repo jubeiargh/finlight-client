@@ -11,7 +11,7 @@ export type FinlightErrorKind =
   | 'webhook_verification'
   | 'preempted';
 
-/** Common base of every error the SDK throws. */
+/** Common base of every error the SDK throws. Every error has one of the seven kinds. */
 export class FinlightError extends Error {
   readonly kind: FinlightErrorKind;
 
@@ -23,9 +23,9 @@ export class FinlightError extends Error {
 }
 
 /**
- * Kind of an API error. There is one kind per known problem code, `other` for unknown
- * codes and bodies without a code. For the NestJS fallback form (no code) the kind comes
- * from the HTTP status.
+ * Kind of an API error: one per known problem code, `other` for unknown codes and bodies
+ * without a code. In the NestJS fallback form (no code) and for refused stream dials the
+ * kind comes from the HTTP status.
  */
 export type ApiErrorKind =
   | 'validation_failed'
@@ -38,32 +38,42 @@ export type ApiErrorKind =
   | 'internal_error'
   | 'other';
 
-/** Kind of a 429: monthly token quota, burst limit, or not recognisable. */
-export type RateLimitType = 'monthly' | 'burst' | 'unknown';
+/** Known `limitType` values of a 429 (vocab `limitTypes`). */
+export const RATE_LIMIT_TYPES = ['monthly', 'burst'] as const;
+/**
+ * Kind of a 429: `monthly` (quota of the period), `burst`, `unknown` (not recognisable) or a
+ * value the server sent that this SDK version does not know yet (kept as is, never retried).
+ */
+export type RateLimitType = (typeof RATE_LIMIT_TYPES)[number] | 'unknown' | (string & {});
 
-export interface ApiFieldError {
+/** One entry of `FinlightApiError.errors`. */
+export interface FieldIssue {
   /** Request property, e.g. `eventTypes`. `null` when the server named none. */
   field: string | null;
   /** Explanation from the server. */
   issue: string | null;
   /** Allowed values, only for closed request vocabularies. */
   allowedValues?: string[];
-  /** WebSocket validation details (`{rule: text}`), only on stream errors. */
+  /** Stream validation details (`{rule: text}`), only on stream errors. */
   constraints?: Record<string, string>;
 }
 
-export interface FinlightApiErrorInit {
+export interface ApiErrorInit {
   status: number;
   code: string | null;
   type: string | null;
   title: string | null;
   detail: string | null;
   requestId: string | null;
-  errors: ApiFieldError[];
-  raw: unknown;
-  channel: 'rest' | 'websocket';
-  limitType: RateLimitType | null;
-  retryAfterMs: number | null;
+  errors: FieldIssue[];
+  /** The body as received (text), or `null` when there was none. */
+  raw: string | null;
+  /** The parsed body, when it was JSON. */
+  json?: unknown;
+  /** Kind when it cannot come from the code (no code). Default: from the status. */
+  apiKind?: ApiErrorKind;
+  limitType?: RateLimitType | null;
+  retryAfterMs?: number | null;
   message?: string;
 }
 
@@ -78,40 +88,36 @@ const KIND_BY_CODE: Record<string, ApiErrorKind> = {
   INTERNAL_ERROR: 'internal_error',
 };
 
-function kindFromStatus(status: number): ApiErrorKind {
+/** Kind from the HTTP status (bodies without a problem code). */
+export function apiKindFromStatus(status: number): ApiErrorKind {
   if (status === 400 || status === 422) return 'validation_failed';
   if (status === 401) return 'unauthorized';
   if (status === 403) return 'forbidden';
   if (status === 404) return 'not_found';
   if (status === 429) return 'rate_limited';
-  if (status >= 500) return 'internal_error';
+  if (status >= 500 && status < 600) return 'internal_error';
   return 'other';
 }
 
 /**
- * An error answered by the finlight API (REST status >= 400, a refused WebSocket dial,
- * or a terminal `connection.error` on a stream).
+ * An error answered by the finlight API: a REST status >= 400, a refused stream dial or a
+ * terminal `connection.error`. Known kinds use the subclasses below; `apiKind` names the kind.
  */
 export class FinlightApiError extends FinlightError {
   readonly status: number;
-  /** Problem code (open). `null` for the NestJS fallback form and non-JSON bodies. */
+  /** Problem code (open). `null` for the NestJS fallback form, non-JSON bodies and refused dials. */
   readonly code: ProblemCode | null;
   readonly type: string | null;
   readonly title: string | null;
   readonly detail: string | null;
   /** The server's request id, or the `X-Request-Id` the SDK sent. */
   readonly requestId: string | null;
-  readonly errors: ApiFieldError[];
-  /** Parsed error body, or its text when it was not JSON. */
-  readonly raw: unknown;
+  readonly errors: FieldIssue[];
+  /** The error body as received (text). `rawJson(error)` returns the parsed JSON. */
+  readonly raw: string | null;
   readonly apiKind: ApiErrorKind;
-  /** Only for 429: `monthly`, `burst` or `unknown`. */
-  readonly limitType: RateLimitType | null;
-  /** Wait time from a `Retry-After` header, if the server sent one. */
-  readonly retryAfterMs: number | null;
-  readonly channel: 'rest' | 'websocket';
 
-  constructor(init: FinlightApiErrorInit) {
+  constructor(init: ApiErrorInit, apiKind?: ApiErrorKind) {
     const label = init.code ?? `HTTP ${init.status}`;
     super('api', init.message ?? `${label}: ${init.detail ?? init.title ?? 'request failed'}`);
     this.status = init.status;
@@ -122,17 +128,83 @@ export class FinlightApiError extends FinlightError {
     this.requestId = init.requestId;
     this.errors = init.errors;
     this.raw = init.raw;
-    this.channel = init.channel;
-    this.limitType = init.limitType;
-    this.retryAfterMs = init.retryAfterMs;
-    if (init.code !== null) {
-      this.apiKind = KIND_BY_CODE[init.code] ?? 'other';
-    } else if (init.raw !== null && typeof init.raw === 'object') {
-      this.apiKind = kindFromStatus(init.status);
-    } else {
-      this.apiKind = init.status === 429 ? 'rate_limited' : 'other';
-    }
-    attachRaw(this, init.raw);
+    this.apiKind = apiKind ?? 'other';
+    if (init.json !== undefined) attachRaw(this, init.json);
+  }
+}
+
+export class ValidationFailedError extends FinlightApiError {
+  constructor(init: ApiErrorInit) {
+    super(init, 'validation_failed');
+  }
+}
+export class CursorInvalidError extends FinlightApiError {
+  constructor(init: ApiErrorInit) {
+    super(init, 'cursor_invalid');
+  }
+}
+export class CursorMismatchError extends FinlightApiError {
+  constructor(init: ApiErrorInit) {
+    super(init, 'cursor_mismatch');
+  }
+}
+export class UnauthorizedError extends FinlightApiError {
+  constructor(init: ApiErrorInit) {
+    super(init, 'unauthorized');
+  }
+}
+export class ForbiddenError extends FinlightApiError {
+  constructor(init: ApiErrorInit) {
+    super(init, 'forbidden');
+  }
+}
+export class NotFoundError extends FinlightApiError {
+  constructor(init: ApiErrorInit) {
+    super(init, 'not_found');
+  }
+}
+export class InternalServerError extends FinlightApiError {
+  constructor(init: ApiErrorInit) {
+    super(init, 'internal_error');
+  }
+}
+/** 429. `limitType` says which limit; burst answers carry `retryAfterMs`. */
+export class RateLimitedError extends FinlightApiError {
+  readonly limitType: RateLimitType;
+  /** The `Retry-After` header in milliseconds, or `null` when the server sent none. */
+  readonly retryAfterMs: number | null;
+
+  constructor(init: ApiErrorInit) {
+    super(init, 'rate_limited');
+    this.limitType = init.limitType ?? 'unknown';
+    this.retryAfterMs = init.retryAfterMs ?? null;
+  }
+}
+
+/** Builds the API error with the subclass of its kind (code first, else the given kind or status). */
+export function createApiError(init: ApiErrorInit): FinlightApiError {
+  let kind: ApiErrorKind;
+  if (init.code !== null) kind = KIND_BY_CODE[init.code] ?? 'other';
+  else kind = init.apiKind ?? apiKindFromStatus(init.status);
+  switch (kind) {
+    case 'validation_failed':
+      return new ValidationFailedError(init);
+    case 'cursor_invalid':
+      return new CursorInvalidError(init);
+    case 'cursor_mismatch':
+      return new CursorMismatchError(init);
+    case 'unauthorized':
+      return new UnauthorizedError(init);
+    case 'forbidden':
+      return new ForbiddenError(init);
+    case 'not_found':
+      return new NotFoundError(init);
+    case 'rate_limited':
+      return new RateLimitedError(init);
+    case 'internal_error':
+      return new InternalServerError(init);
+    default:
+      return new FinlightApiError(init, 'other');
   }
 }
 
@@ -149,18 +221,15 @@ export class FinlightValidationError extends FinlightError {
 
 /** The connection failed (DNS, TCP, TLS, reset). The original error is the `cause`. */
 export class FinlightNetworkError extends FinlightError {
-  constructor(message: string, cause?: unknown) {
-    super('network', message, { cause });
+  constructor(message: string, cause?: unknown, kind: 'network' | 'timeout' = 'network') {
+    super(kind, message, { cause });
   }
 }
 
 /** An attempt or the whole call ran out of time. */
-export class FinlightTimeoutError extends FinlightError {
-  readonly timeoutMs: number;
-
-  constructor(message: string, timeoutMs: number, cause?: unknown) {
-    super('timeout', message, { cause });
-    this.timeoutMs = timeoutMs;
+export class FinlightTimeoutError extends FinlightNetworkError {
+  constructor(message: string, cause?: unknown) {
+    super(message, cause, 'timeout');
   }
 }
 
@@ -168,11 +237,14 @@ export class FinlightTimeoutError extends FinlightError {
 export class FinlightDecodeError extends FinlightError {
   /** JSON path of the failing value, e.g. `article.source.domain`. */
   readonly path: string | null;
+  /** The value that did not fit. */
+  readonly raw: unknown;
 
   constructor(message: string, path: string | null = null, raw?: unknown, cause?: unknown) {
     super('decode', message, { cause });
     this.path = path;
-    if (raw !== undefined) attachRaw(this, raw);
+    this.raw = raw;
+    if (raw !== undefined && raw !== null && typeof raw === 'object') attachRaw(this, raw);
   }
 }
 
@@ -198,7 +270,7 @@ export class WebhookVerificationError extends FinlightError {
   }
 }
 
-/** The stream was preempted by the server. Terminal: the SDK does not reconnect. */
+/** The stream was preempted by the server. */
 export class PreemptedError extends FinlightError {
   readonly reason: PreemptReason;
   readonly newLeaseId: string | null;
@@ -212,24 +284,21 @@ export class PreemptedError extends FinlightError {
   }
 }
 
-function hasKind(value: unknown, kind: string): boolean {
-  return value instanceof Error && (value as { kind?: unknown }).kind === kind;
-}
+const KINDS = ['api', 'validation', 'network', 'timeout', 'decode', 'webhook_verification', 'preempted'];
 
 /** True for every error thrown by this SDK (also across duplicate SDK copies). */
 export function isFinlightError(value: unknown): value is FinlightError {
   if (value instanceof FinlightError) return true;
   const kind = value instanceof Error ? (value as { kind?: unknown }).kind : undefined;
-  return (
-    typeof kind === 'string' &&
-    ['api', 'validation', 'network', 'timeout', 'decode', 'webhook_verification', 'preempted'].includes(kind)
-  );
+  return typeof kind === 'string' && KINDS.includes(kind);
 }
 
 /** True for API errors; works without `instanceof`. */
 export function isFinlightApiError(value: unknown): value is FinlightApiError {
   return (
     value instanceof FinlightApiError ||
-    (hasKind(value, 'api') && typeof (value as { status?: unknown }).status === 'number')
+    (value instanceof Error &&
+      (value as { kind?: unknown }).kind === 'api' &&
+      typeof (value as { status?: unknown }).status === 'number')
   );
 }

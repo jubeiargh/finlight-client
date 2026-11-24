@@ -2,7 +2,7 @@
 
 {{langLinks}}
 
-> **{{breakingLabel}}** {{breaking}}
+> **Breaking release.** {{breaking}}
 
 {{translationNote}}
 
@@ -15,6 +15,8 @@
 | 4.x | v3 (`/v3`, WebSocket `payloadVersion` 3, webhooks v3) | {{v_current}} |
 | 3.x | v1/v2 | {{v_old}} |
 
+{{versionsIndependent}}
+
 {{versionsNote}}
 
 ## {{h_requirements}}
@@ -23,7 +25,7 @@
 - TypeScript >= 5.0 ({{req_ts}})
 - `ws` >= 8.18 ({{req_ws}})
 
-## {{h_install}}
+## {{h_installation}}
 
 ```bash
 npm install finlight-client@^4
@@ -74,12 +76,18 @@ for await (const p of client.articles.searchAll({ query: 'eventType:mna' }).page
 ## {{h_lookups}}
 
 ```ts
+import { cacheInfo } from 'finlight-client';
+
 const article = await client.articles.get('pXhK9f2aQ1mZ0bT7cY3rLw', { include: ['content'] });
 const byLink = await client.articles.getByLink('https://www.reuters.com/markets/example', { include: ['companies'] });
 
 const [nvidia] = await client.companies.search({ q: 'NVDA', mic: 'XNAS' });
 const many = await client.companies.getMany([4821, 1234]);
 const record = await client.companies.get(4821); // ETag revalidation is built in
+console.log(cacheInfo(record)?.etag, many.skipped.length);
+
+// With your own ETag: null means "not modified"
+const fresh = await client.companies.get(4821, { ifNoneMatch: '"80b88d6b…"' });
 
 const sources = await client.sources.list();
 ```
@@ -121,13 +129,13 @@ const stream = client.stream(
 );
 
 for await (const item of stream) {
-  if (item.kind === 'created' || item.kind === 'updated') console.log(item.kind, item.article?.title);
-  // item.kind === 'other': an event this SDK version does not know yet (item.frame has it)
+  if (item.kind === 'created' || item.kind === 'updated') console.log(item.kind, item.data?.title);
+  // item.kind === 'other': an event this SDK version does not know yet; rawJson(item) has the frame
 }
 
 // Raw: the article skeleton before enrichment; no include
 for await (const item of client.rawStream({ query: 'source:www.reuters.com' })) {
-  console.log(item.article?.firstSeenAt, item.article?.title);
+  console.log(item.data?.firstSeenAt, item.data?.title);
 }
 ```
 
@@ -163,20 +171,44 @@ app.post('/finlight', express.raw({ type: 'application/json' }), (req, res) => {
 ## {{h_errors}}
 
 ```ts
-import { isFinlightApiError, FinlightValidationError, PreemptedError } from 'finlight-client';
+import { isFinlightApiError, NotFoundError, RateLimitedError } from 'finlight-client';
 
 try {
   await client.articles.search({ eventTypes: ['earnigns'] });
 } catch (err) {
-  if (isFinlightApiError(err)) {
+  if (err instanceof RateLimitedError && err.limitType === 'monthly') {
+    console.log('quota used up for this period');
+  } else if (err instanceof NotFoundError) {
+    console.log('not found');
+  } else if (isFinlightApiError(err)) {
     console.log(err.status, err.code, err.apiKind, err.detail, err.requestId);
     for (const e of err.errors) console.log(e.field, e.issue, e.allowedValues);
-    if (err.limitType === 'monthly') console.log('quota used up for this period');
   }
 }
 ```
 
 {{errorsNotes}}
+
+```text
+FinlightError                    kind
+├── FinlightApiError             api (apiKind: one per problem code, or other)
+│   ├── ValidationFailedError    validation_failed
+│   ├── CursorInvalidError       cursor_invalid
+│   ├── CursorMismatchError      cursor_mismatch
+│   ├── UnauthorizedError        unauthorized
+│   ├── ForbiddenError           forbidden
+│   ├── NotFoundError            not_found
+│   ├── RateLimitedError         rate_limited (limitType, retryAfterMs)
+│   └── InternalServerError      internal_error
+├── FinlightValidationError      validation
+├── FinlightNetworkError         network
+│   └── FinlightTimeoutError     timeout
+├── FinlightDecodeError          decode
+├── WebhookVerificationError     webhook_verification
+└── PreemptedError               preempted
+```
+
+{{retryIntro}}
 
 | {{e_case}} | {{e_retry}} |
 |---|---|
@@ -203,14 +235,27 @@ await client.articles.search({ query: 'ticker:TSLA' }, { signal: controller.sign
 | `timeoutMs` | `30000` | {{cfg_timeoutMs}} |
 | `totalTimeoutMs` | - | {{cfg_totalTimeoutMs}} |
 | `maxRetries` | `3` | {{cfg_maxRetries}} |
+| `retryBaseDelayMs` / `retryMaxDelayMs` | `500` / `8000` | {{cfg_retryDelays}} |
 | `retryOnBurst` | `'once'` | {{cfg_retryOnBurst}} |
 | `burstWaitMs` | `10000` | {{cfg_burstWaitMs}} |
 | `maxPages` | `10` | {{cfg_maxPages}} |
-| `reconnectOnQuotaExhausted` / `quotaRetryIntervalMs` | `true` / `3600000` | {{cfg_quota}} |
+| `maxResponseBytes` | `33554432` (32 MiB) | {{cfg_maxResponseBytes}} |
+| `companyCacheSize` | `256` | {{cfg_companyCacheSize}} |
 | `pingIntervalMs` / `watchdogTimeoutMs` / `rotationIntervalMs` | `25000` / `60000` / `6900000` | {{cfg_liveness}} |
+| `reconnectBaseDelayMs` / `reconnectMaxDelayMs` | `1000` / `30000` | {{cfg_reconnect}} |
+| `longBackoffMs` | `60000` | {{cfg_longBackoff}} |
+| `quotaReconnect` / `quotaReconnectIntervalMs` | `true` / `3600000` | {{cfg_quota}} |
+| `searchFailedThreshold` | `5` | {{cfg_searchFailedThreshold}} |
+| `dedupeCacheSize` | `1000` | {{cfg_dedupe}} |
+| `maxMessageBytes` | `33554432` (32 MiB, min. 16 MiB) | {{cfg_maxMessageBytes}} |
+| `connectTimeoutMs` | `30000` | {{cfg_connectTimeout}} |
 | `fetch` / `wsAgent` | - | {{cfg_transport}} |
 | `logger` | - | {{cfg_logger}} |
 | `clock` | - | {{cfg_clock}} |
+
+## {{h_logging}}
+
+{{loggingNotes}}
 
 ## {{h_data}}
 
@@ -230,7 +275,7 @@ await client.articles.search({ query: 'ticker:TSLA' }, { signal: controller.sign
 | `sources.getSources()` | `sources.list()` |
 | `client.websocket.connect(params, onArticle)`, `stop()` | `for await (const item of client.stream(params))`, `stream.close()` |
 | {{mig_rawWs}} | `client.rawStream(params)` |
-| `WebhookService.constructEvent(body, signature, secret, timestamp)` | `Webhooks.constructEvent(rawBody, headers, secret)` |
+| `WebhookService.constructEvent(body, signature, secret, timestamp)` | `Webhooks.constructEvent(rawBody, headers, secret)` or `Webhooks.constructEventFromValues(rawBody, signature, timestamp, secret)` |
 | `logLevel` | {{mig_logLevel}} |
 | `publishDate` | `publishedAt` |
 | `createdAt` | `firstSeenAt` |
@@ -247,9 +292,18 @@ await client.articles.search({ query: 'ticker:TSLA' }, { signal: controller.sign
 
 {{webhookSwitch}}
 
-## {{h_logging}}
+## {{h_development}}
 
-{{loggingNotes}}
+```bash
+npm ci
+npm test                      # unit and conformance tests, no network, no keys
+npm run conformance:check     # vendored kit matches conformance/MANIFEST
+npm run conformance:sync -- --from <monorepo>/shared/contracts/api-v3
+FINLIGHT_API_KEY=... FINLIGHT_BASE_URL=https://api.dev.finlight.me \
+  FINLIGHT_WSS_URL=wss://wss.dev.finlight.me npm run test:live
+```
+
+{{developmentNotes}}
 
 ## {{h_license}}
 

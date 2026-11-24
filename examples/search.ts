@@ -17,7 +17,7 @@ export async function main(): Promise<void> {
       const companies = companiesPresent(article)
         ? article.companies.map((c) => c.primaryListing?.ticker ?? c.name).join(', ')
         : 'not available';
-      console.log(`${published} ${article.title} [${companies}]`);
+      console.log(`${published} ${article.source.domain} ${article.title} [${companies}]`);
     }
     console.log(`more pages: ${page.pagination.hasMore}`);
   } catch (err) {

@@ -11,7 +11,7 @@ export type RetryOnBurst = 'off' | 'once';
 /**
  * Client configuration. All times are in milliseconds.
  */
-export interface FinlightClientConfig {
+export interface FinlightConfig {
   /** Required. */
   apiKey: string;
   /** Default `https://api.finlight.me`. A trailing slash does not matter. */
@@ -30,16 +30,16 @@ export interface FinlightClientConfig {
   /** Largest backoff delay. Default 8000. */
   retryMaxDelayMs?: number;
   /**
-   * Burst 429 handling: `once` waits at least `burstWaitMs` and retries one time,
-   * `off` throws at once. Default `once`.
+   * Burst 429 handling: `once` waits for `Retry-After` (`burstWaitMs` when the header is
+   * missing) and retries one time; `off` throws at once. Default `once`.
    * This retry does not count against `maxRetries`.
    */
   retryOnBurst?: RetryOnBurst;
-  /** Wait before the burst retry. Default and minimum 10000. A longer `Retry-After` wins. */
+  /** Wait before the burst retry when the 429 carries no `Retry-After`. Default 10000. */
   burstWaitMs?: number;
   /** Page limit of `articles.searchAll`. Default 10. */
   maxPages?: number;
-  /** Largest REST response body. Default 64 MiB. */
+  /** Largest REST response body. Default 32 MiB. */
   maxResponseBytes?: number;
   /** Size of the ETag cache of `companies.get` (records). Default 256, 0 turns it off. */
   companyCacheSize?: number;
@@ -58,12 +58,14 @@ export interface FinlightClientConfig {
   longBackoffMs?: number;
   /**
    * When the WebSocket quota is used up (dial 403 "quota exceeded" or a `quota_exceeded`
-   * preemption) the stream keeps trying every `quotaRetryIntervalMs` until the quota allows it
+   * preemption) the stream keeps trying every `quotaReconnectIntervalMs` until the quota allows it
    * again. Default `true`. With `false` the stream ends with the typed error instead.
    */
-  reconnectOnQuotaExhausted?: boolean;
+  quotaReconnect?: boolean;
   /** Interval of those quota attempts. Default 3600000 (1 h). */
-  quotaRetryIntervalMs?: number;
+  quotaReconnectIntervalMs?: number;
+  /** After this many `SEARCH_FAILED` in a row an error goes to `onError`. Default 5. */
+  searchFailedThreshold?: number;
   /** Entries of the per-stream duplicate filter. Default 1000. */
   dedupeCacheSize?: number;
   /** Largest incoming stream message. Default 32 MiB (at least 16 MiB). */
@@ -103,8 +105,9 @@ export interface ResolvedConfig {
   reconnectBaseDelayMs: number;
   reconnectMaxDelayMs: number;
   longBackoffMs: number;
-  reconnectOnQuotaExhausted: boolean;
-  quotaRetryIntervalMs: number;
+  quotaReconnect: boolean;
+  quotaReconnectIntervalMs: number;
+  searchFailedThreshold: number;
   dedupeCacheSize: number;
   maxMessageBytes: number;
   connectTimeoutMs: number;
@@ -126,7 +129,7 @@ export const DEFAULTS = {
   retryOnBurst: 'once' as RetryOnBurst,
   burstWaitMs: 10_000,
   maxPages: 10,
-  maxResponseBytes: 64 * 1024 * 1024,
+  maxResponseBytes: 32 * 1024 * 1024,
   companyCacheSize: 256,
   pingIntervalMs: 25_000,
   watchdogTimeoutMs: 60_000,
@@ -134,17 +137,17 @@ export const DEFAULTS = {
   reconnectBaseDelayMs: 1_000,
   reconnectMaxDelayMs: 30_000,
   longBackoffMs: 60_000,
-  reconnectOnQuotaExhausted: true,
-  quotaRetryIntervalMs: 60 * 60_000,
+  quotaReconnect: true,
+  quotaReconnectIntervalMs: 60 * 60_000,
+  searchFailedThreshold: 5,
   dedupeCacheSize: 1000,
   maxMessageBytes: 32 * 1024 * 1024,
   connectTimeoutMs: 30_000,
 } as const;
 
-export const MIN_BURST_WAIT_MS = 10_000;
 export const MIN_MESSAGE_BYTES = 16 * 1024 * 1024;
 
-const CONFIG_KEYS: ReadonlyArray<keyof FinlightClientConfig> = [
+const CONFIG_KEYS: ReadonlyArray<keyof FinlightConfig> = [
   'apiKey',
   'baseUrl',
   'wssUrl',
@@ -164,8 +167,9 @@ const CONFIG_KEYS: ReadonlyArray<keyof FinlightClientConfig> = [
   'reconnectBaseDelayMs',
   'reconnectMaxDelayMs',
   'longBackoffMs',
-  'reconnectOnQuotaExhausted',
-  'quotaRetryIntervalMs',
+  'quotaReconnect',
+  'quotaReconnectIntervalMs',
+  'searchFailedThreshold',
   'dedupeCacheSize',
   'maxMessageBytes',
   'connectTimeoutMs',
@@ -253,7 +257,7 @@ export function resolveConfig(input: unknown): { apiKey: string; config: Resolve
     retryBaseDelayMs: num(input, 'retryBaseDelayMs', DEFAULTS.retryBaseDelayMs, 0),
     retryMaxDelayMs: num(input, 'retryMaxDelayMs', DEFAULTS.retryMaxDelayMs, 0),
     retryOnBurst,
-    burstWaitMs: Math.max(MIN_BURST_WAIT_MS, num(input, 'burstWaitMs', DEFAULTS.burstWaitMs, 0)),
+    burstWaitMs: num(input, 'burstWaitMs', DEFAULTS.burstWaitMs, 0),
     maxPages,
     maxResponseBytes: num(input, 'maxResponseBytes', DEFAULTS.maxResponseBytes, 1024),
     companyCacheSize: Math.floor(num(input, 'companyCacheSize', DEFAULTS.companyCacheSize, 0)),
@@ -263,8 +267,9 @@ export function resolveConfig(input: unknown): { apiKey: string; config: Resolve
     reconnectBaseDelayMs: num(input, 'reconnectBaseDelayMs', DEFAULTS.reconnectBaseDelayMs, 0),
     reconnectMaxDelayMs: num(input, 'reconnectMaxDelayMs', DEFAULTS.reconnectMaxDelayMs, 0),
     longBackoffMs: num(input, 'longBackoffMs', DEFAULTS.longBackoffMs, 0),
-    reconnectOnQuotaExhausted: bool(input, 'reconnectOnQuotaExhausted', DEFAULTS.reconnectOnQuotaExhausted),
-    quotaRetryIntervalMs: num(input, 'quotaRetryIntervalMs', DEFAULTS.quotaRetryIntervalMs, 1),
+    quotaReconnect: bool(input, 'quotaReconnect', DEFAULTS.quotaReconnect),
+    quotaReconnectIntervalMs: num(input, 'quotaReconnectIntervalMs', DEFAULTS.quotaReconnectIntervalMs, 1),
+    searchFailedThreshold: Math.floor(num(input, 'searchFailedThreshold', DEFAULTS.searchFailedThreshold, 1)),
     dedupeCacheSize: Math.floor(num(input, 'dedupeCacheSize', DEFAULTS.dedupeCacheSize, 0)),
     maxMessageBytes: Math.max(MIN_MESSAGE_BYTES, num(input, 'maxMessageBytes', DEFAULTS.maxMessageBytes, 1)),
     connectTimeoutMs: num(input, 'connectTimeoutMs', DEFAULTS.connectTimeoutMs, 1),

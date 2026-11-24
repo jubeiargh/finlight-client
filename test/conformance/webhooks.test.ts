@@ -1,16 +1,7 @@
-import { WebhookVerificationError, type WebhookVerificationReason } from '../../src/errors';
+import { WebhookVerificationError } from '../../src/errors';
 import type { WebhookEvent } from '../../src/models';
 import { Webhooks, WrongPayloadVersion } from '../../src/webhooks';
 import { caseName, listFixtures, loadFixture } from '../helpers/kit';
-
-const REASONS: Record<string, WebhookVerificationReason> = {
-  'signature mismatch': 'signature_mismatch',
-  'timestamp outside tolerance': 'timestamp_outside_tolerance',
-  'unparseable timestamp': 'unparseable_timestamp',
-  'missing timestamp': 'missing_timestamp',
-  'missing signature': 'missing_signature',
-  'unsupported signature scheme': 'unsupported_signature_scheme',
-};
 
 const files = listFixtures('fixtures/webhook');
 const byId = new Map<string, any>();
@@ -60,15 +51,16 @@ describe('W: webhooks', () => {
             expect(e.occurredAt).toBe(e.data.firstSeenAt);
           }
           if (id === 'W-05') expect(e.isTest).toBe(true);
-        } else if (expected.error === 'PayloadVersionMismatch') {
+        } else if (expected.outcome === 'wrongPayloadVersion') {
           const result = run(f, body);
           expect(result).toBeInstanceOf(WrongPayloadVersion);
           const w = result as WrongPayloadVersion;
           expect(w.detectedVersion).toBe(2);
-          expect(w.payloadVersionPresent).toBe(expected.receivedPayloadVersion !== null);
+          expect(w.payloadVersionPresent).toBe(expected.payloadVersionPresent);
+          expect(w.detectedVersion).toBe(expected.detectedVersion);
           expect(w.payloadVersion).toBeUndefined();
           expect(w.link).toBe(expected.link);
-          expect(w.json).toEqual(JSON.parse(f.request.rawBody));
+          expect(w.raw).toEqual(JSON.parse(f.request.rawBody));
         } else {
           let caught: unknown;
           try {
@@ -77,7 +69,7 @@ describe('W: webhooks', () => {
             caught = err;
           }
           expect(caught).toBeInstanceOf(WebhookVerificationError);
-          expect((caught as WebhookVerificationError).reason).toBe(REASONS[expected.reason]);
+          expect((caught as WebhookVerificationError).reason).toBe(expected.reason);
         }
       }
 
@@ -96,9 +88,24 @@ describe('W: webhooks', () => {
             toleranceMs: f.verify.toleranceSeconds * 1000,
           },
         );
-      if (expected.outcome === 'error' && expected.error !== 'PayloadVersionMismatch')
+      const opts = { now: () => Date.parse(f.verify.now), toleranceMs: f.verify.toleranceSeconds * 1000 };
+      const fromValues = (): unknown =>
+        Webhooks.constructEventFromValues(
+          bytes,
+          headers['x-webhook-signature'] as string | undefined,
+          headers['x-webhook-timestamp'] as string | undefined,
+          f.secret,
+          opts,
+        );
+      if (expected.outcome === 'error') {
         expect(verify).toThrow(WebhookVerificationError);
-      else expect(verify).not.toThrow();
+        expect(fromValues).toThrow(WebhookVerificationError);
+      } else {
+        expect(verify).not.toThrow();
+        const viaValues = fromValues();
+        if (expected.outcome === 'wrongPayloadVersion') expect(viaValues).toBeInstanceOf(WrongPayloadVersion);
+        else expect((viaValues as WebhookEvent).eventId).toBe(expected.event.eventId);
+      }
     });
   }
 });

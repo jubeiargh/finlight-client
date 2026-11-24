@@ -28,6 +28,18 @@ test('the public exports carry the shared names', () => {
     'FinlightDecodeError',
     'WebhookVerificationError',
     'PreemptedError',
+    'ValidationFailedError',
+    'CursorInvalidError',
+    'CursorMismatchError',
+    'UnauthorizedError',
+    'ForbiddenError',
+    'NotFoundError',
+    'RateLimitedError',
+    'InternalServerError',
+    'RATE_LIMIT_TYPES',
+    'DEFAULT_WEBHOOK_TOLERANCE_MS',
+    'cacheInfo',
+    'isWrongPayloadVersion',
     'contentPresent',
     'sentimentPresent',
     'companiesPresent',
@@ -39,6 +51,7 @@ test('the public exports carry the shared names', () => {
   for (const name of values) expect(typeof (sdk as Record<string, unknown>)[name]).not.toBe('undefined');
   expect(typeof sdk.Webhooks.constructEvent).toBe('function');
   expect(typeof sdk.Webhooks.verifySignature).toBe('function');
+  expect(typeof sdk.Webhooks.constructEventFromValues).toBe('function');
   const client = new sdk.FinlightClient({ apiKey: 'k' });
   for (const m of ['search', 'searchAll', 'get', 'getByLink'] as const)
     expect(typeof client.articles[m]).toBe('function');
@@ -47,7 +60,7 @@ test('the public exports carry the shared names', () => {
   expect(typeof client.stream).toBe('function');
   expect(typeof client.rawStream).toBe('function');
   // No v2 names survive.
-  for (const old of ['FinlightApi', 'WebhookService', 'ArticleService', 'SourceService']) {
+  for (const old of ['FinlightApi', 'WebhookService', 'ArticleService', 'SourceService', 'skippedEntries']) {
     expect(old in sdk).toBe(false);
   }
 });
@@ -68,3 +81,23 @@ export type ModelNames = [
   StreamEvent,
   WebhookEvent,
 ];
+
+test('error tree: timeout is a network error, subclasses carry their kind', () => {
+  const timeout = new sdk.FinlightTimeoutError('t');
+  expect(timeout).toBeInstanceOf(sdk.FinlightNetworkError);
+  expect(timeout.kind).toBe('timeout');
+  const nf = new sdk.NotFoundError({
+    status: 404,
+    code: null,
+    type: null,
+    title: null,
+    detail: null,
+    requestId: null,
+    errors: [],
+    raw: null,
+  });
+  expect(nf).toBeInstanceOf(sdk.FinlightApiError);
+  expect(nf.apiKind).toBe('not_found');
+  const decode = new sdk.FinlightDecodeError('d', 'a.b', { x: 1 });
+  expect(decode.raw).toEqual({ x: 1 });
+});

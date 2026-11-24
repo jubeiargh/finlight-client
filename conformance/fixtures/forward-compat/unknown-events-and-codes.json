@@ -65,6 +65,23 @@
         "requestId": "req_synthetic"
       },
       "expect": "base FinlightApiError (no subclass) with code \"PAYMENT_REQUIRED\", status 402, requestId; not retried"
+    },
+    {
+      "kind": "problem.limitType",
+      "status": 429,
+      "headers": {
+        "content-type": "application/problem+json"
+      },
+      "wire": {
+        "type": "https://docs.finlight.me/errors/rate-limited",
+        "title": "Too many requests",
+        "status": 429,
+        "detail": "Synthetic future limit.",
+        "code": "RATE_LIMITED",
+        "requestId": "req_synthetic",
+        "limitType": "daily"
+      },
+      "expect": "RateLimitedError (apiKind rate_limited) with limitType \"daily\" kept as a string; not retried (retry class never)"
     }
   ]
 }

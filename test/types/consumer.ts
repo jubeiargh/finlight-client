@@ -33,7 +33,7 @@ const when: Date | null = toDate(article.publishedAt);
 async function consume(): Promise<void> {
   for await (const ev of client.stream({ include: ['companies'] })) {
     const item: StreamEvent = ev;
-    if (item.kind === 'created' || item.kind === 'updated') void item.article?.id;
+    if (item.kind === 'created' || item.kind === 'updated') void item.data?.id;
   }
 }
 const result = Webhooks.constructEvent('{}', { 'x-webhook-signature': 's' }, 'secret');

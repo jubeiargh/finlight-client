@@ -2,14 +2,14 @@ import type { CallOptions } from './articles';
 import { withSkipped } from './companies';
 import { decodeEntries, decodeSource, envelopeField, toDecodeError } from './decode';
 import type { HttpTransport } from './http';
-import type { Source } from './models';
+import type { SourceList } from './models';
 import { checkOptions } from './params';
 
 export class SourcesService {
   constructor(private readonly http: HttpTransport) {}
 
   /** The full source catalog, sorted by domain. Not metered. */
-  async list(options?: CallOptions): Promise<Source[]> {
+  async list(options?: CallOptions): Promise<SourceList> {
     const opts = checkOptions(options, ['signal'], 'sources.list');
     const res = await this.http.request({
       method: 'GET',

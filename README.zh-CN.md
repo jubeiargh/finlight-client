@@ -1,19 +1,21 @@
-# finlight TypeScript / Node.js 客户端
+# finlight TypeScript 客户端
 
 *[English](README.md) | 简体中文 | [日本語](README.ja.md) | [한국어](README.ko.md)*
 
-> **不兼容变更：** 4.x 只支持 finlight API v3（REST `/v3`、WebSocket `payloadVersion` 3、v3 Webhook），与 3.x 代码不兼容。升级前请阅读[迁移说明](#migration)和[更新日志](CHANGELOG.md)。如需继续使用 API v2，请固定 `finlight-client@^3`。
+> **Breaking release.** 4.x 只支持 finlight API v3（REST `/v3`、WebSocket `payloadVersion` 3、v3 Webhook），不能运行 3.x 代码。请先阅读[从 3.x 迁移](#migration)和[更新日志](CHANGELOG.md)。如需继续使用 API v2，请固定 `finlight-client@^3`。
 
-*本文译自英文 README。如有出入，以英文版为准。*
+*本文译自英文 README，会随英文版后续更新。如有出入，以英文版为准。*
 
 [finlight.me](https://finlight.me) 的类型化客户端：搜索金融新闻，查询文章、公司和来源，通过 WebSocket 接收实时文章，并验证 Webhook。
 
 ## 版本
 
-| SDK 主版本 | finlight API | 状态 |
+| SDK 版本 | API 版本 | 状态 |
 |---|---|---|
 | 4.x | v3 (`/v3`, WebSocket `payloadVersion` 3, webhooks v3) | 当前版本 |
 | 3.x | v1/v2 | 不再发布新版本 |
+
+SDK 版本与 API 版本相互独立：新的 API 字段会通过兼容的 4.x 版本发布。支持 API v3 的 SDK：TypeScript 4.x、Python 3.x、PHP 2.x、Go `/v2`、.NET 2.x、Java 1.x、Ruby 1.x、Rust 0.2。
 
 `^3` 和 `~3` 不会解析到 4.x。`*` 或 `>=3` 这类开放范围会，因此请固定主版本。
 
@@ -47,7 +49,7 @@ for (const article of page.articles) console.log(article.publishedAt, article.ti
 
 SDK 只发送你设置的参数，不添加任何默认值：`limit`（20）、`languages`（`['en']`）和时间范围由服务器决定。SDK 不认识的参数名会在发出请求之前抛出 `FinlightValidationError`，因为服务器会静默忽略它，但仍然计入调用次数。
 
-## 搜索
+## 搜索文章
 
 `articles.search` 返回一页结果。`articles.searchAll` 会自动翻页（cursor）。
 
@@ -75,23 +77,30 @@ for await (const p of client.articles.searchAll({ query: 'eventType:mna' }).page
 - `from` 和 `to` 接受 `Date`（以带毫秒的 UTC 发送）或字符串（原样发送），作用于 `orderBy` 指定的时间字段。
 - 无法解码的条目会被跳过、记录日志并列在 `page.skipped` 中，页面其余部分仍可使用。
 
-## 查询
+## 查询文章、公司和来源
 
 ```ts
+import { cacheInfo } from 'finlight-client';
+
 const article = await client.articles.get('pXhK9f2aQ1mZ0bT7cY3rLw', { include: ['content'] });
 const byLink = await client.articles.getByLink('https://www.reuters.com/markets/example', { include: ['companies'] });
 
 const [nvidia] = await client.companies.search({ q: 'NVDA', mic: 'XNAS' });
 const many = await client.companies.getMany([4821, 1234]);
 const record = await client.companies.get(4821); // ETag revalidation is built in
+console.log(cacheInfo(record)?.etag, many.skipped.length);
+
+// With your own ETag: null means "not modified"
+const fresh = await client.companies.get(4821, { ifNoneMatch: '"80b88d6b…"' });
 
 const sources = await client.sources.list();
 ```
 
-- 404 会抛出 `apiKind: 'not_found'` 的 `FinlightApiError`，而不是返回空结果。
+- 404 会抛出 `NotFoundError`（`apiKind: 'not_found'`），而不是返回空结果。
 - 在 id 上线之前收录的文章无法按 id 查询，请使用 `getByLink`。
-- 公司接口需要 `entityAccess` 权限，否则返回 403。
-- `companies.get` 会保存 ETag 并重新验证。收到 304 时返回缓存的记录；`cacheInfo(record)` 可查看 ETag。
+- 公司接口需要 `entityAccess` 权限，否则返回 403（`ForbiddenError`）。
+- `companies.get` 会保存 ETag 并重新验证；收到 304 时返回缓存的记录。`cacheInfo(record)` 可查看 ETag。如果传入自己的 `ifNoneMatch`，304 时返回 `null`（"未修改"）。
+- `companies.search`、`companies.getMany` 和 `sources.list` 返回数组，并额外带有 `skipped` 字段，列出无法解码的条目。
 
 ## 缺失、null 与空列表
 
@@ -133,13 +142,13 @@ const stream = client.stream(
 );
 
 for await (const item of stream) {
-  if (item.kind === 'created' || item.kind === 'updated') console.log(item.kind, item.article?.title);
-  // item.kind === 'other': an event this SDK version does not know yet (item.frame has it)
+  if (item.kind === 'created' || item.kind === 'updated') console.log(item.kind, item.data?.title);
+  // item.kind === 'other': an event this SDK version does not know yet; rawJson(item) has the frame
 }
 
 // Raw: the article skeleton before enrichment; no include
 for await (const item of client.rawStream({ query: 'source:www.reuters.com' })) {
-  console.log(item.article?.firstSeenAt, item.article?.title);
+  console.log(item.data?.firstSeenAt, item.data?.title);
 }
 ```
 
@@ -153,7 +162,7 @@ for await (const item of client.rawStream({ query: 'source:www.reuters.com' })) 
 - SDK 不会自动补齐数据。`onReconnect` 提供 `lastSeenAt`，你可以通过 REST 补齐缺口。
 - 退出循环、调用 `stream.close()` 或触发 abort 信号都会关闭 socket 并停止所有计时器。
 - 以下情况会以错误结束流：密钥被拒绝、套餐不含 WebSocket、订阅无效以及原因为 `connection_limit` 的抢占（`PreemptedError`）。其他问题会交给 `onError`，流继续运行。
-- **WebSocket 配额用尽。** 当本期配额用尽（连接被拒绝或原因为 `quota_exceeded` 的抢占）时，流不会结束，而是每小时重试一次，直到配额再次允许。每次尝试都会记录警告并报告给 `onQuotaWait`。设置 `reconnectOnQuotaExhausted: false` 则改为以错误结束流；`quotaRetryIntervalMs` 可修改间隔。REST 调用从不等待：月度 429 会立即失败。
+- **WebSocket 配额用尽。** 当本期配额用尽（连接被拒绝或原因为 `quota_exceeded` 的抢占）时，流不会结束，而是每小时重试一次，直到配额再次允许。每次尝试都会记录警告并报告给 `onQuotaWait`。设置 `quotaReconnect: false` 则改为以错误结束流；`quotaReconnectIntervalMs` 可修改间隔。REST 调用从不等待：月度 429 会立即失败。
 - `rawStream` 不支持 `include`，也不支持增强相关的过滤条件。
 
 ## Webhook
@@ -196,26 +205,50 @@ app.post('/finlight', express.raw({ type: 'application/json' }), (req, res) => {
 ## 错误与重试
 
 ```ts
-import { isFinlightApiError, FinlightValidationError, PreemptedError } from 'finlight-client';
+import { isFinlightApiError, NotFoundError, RateLimitedError } from 'finlight-client';
 
 try {
   await client.articles.search({ eventTypes: ['earnigns'] });
 } catch (err) {
-  if (isFinlightApiError(err)) {
+  if (err instanceof RateLimitedError && err.limitType === 'monthly') {
+    console.log('quota used up for this period');
+  } else if (err instanceof NotFoundError) {
+    console.log('not found');
+  } else if (isFinlightApiError(err)) {
     console.log(err.status, err.code, err.apiKind, err.detail, err.requestId);
     for (const e of err.errors) console.log(e.field, e.issue, e.allowedValues);
-    if (err.limitType === 'monthly') console.log('quota used up for this period');
   }
 }
 ```
 
-所有 SDK 错误都继承自 `FinlightError`，并带有 `kind` 字段：`api`、`validation`、`network`、`timeout`、`decode`、`webhook_verification` 或 `preempted`。`FinlightApiError` 包含 `status`、`code`、`title`、`detail`、`requestId`、`errors[]` 和 `apiKind`。每次逻辑调用都发送自己的 `X-Request-Id`，重试时保持不变。重试规则：
+所有 SDK 错误都继承自 `FinlightError`，并带有 `kind` 字段。API 错误包含 `status`、`code`、`title`、`detail`、`requestId`、`errors`（`FieldIssue[]`）、`apiKind` 和 `raw`（收到的原始请求体；`rawJson(err)` 返回解析后的 JSON）。每次逻辑调用都发送自己的 `X-Request-Id`，重试时保持不变。
+
+```text
+FinlightError                    kind
+├── FinlightApiError             api (apiKind: one per problem code, or other)
+│   ├── ValidationFailedError    validation_failed
+│   ├── CursorInvalidError       cursor_invalid
+│   ├── CursorMismatchError      cursor_mismatch
+│   ├── UnauthorizedError        unauthorized
+│   ├── ForbiddenError           forbidden
+│   ├── NotFoundError            not_found
+│   ├── RateLimitedError         rate_limited (limitType, retryAfterMs)
+│   └── InternalServerError      internal_error
+├── FinlightValidationError      validation
+├── FinlightNetworkError         network
+│   └── FinlightTimeoutError     timeout
+├── FinlightDecodeError          decode
+├── WebhookVerificationError     webhook_verification
+└── PreemptedError               preempted
+```
+
+重试规则：
 
 | 响应 | 重试 |
 |---|---|
 | 400, 401, 403, 404 | 从不 |
 | 429 monthly / unknown | 从不 |
-| 429 burst | 一次，等待 `Retry-After` 指定的时间（缺失时为 10 秒）。默认开启，可用 `retryOnBurst: 'off'` 关闭 |
+| 429 burst | 一次，等待 `Retry-After` 指定的时间（缺失时为 10 秒）；默认开启，可用 `retryOnBurst: 'off'` 关闭 |
 | 5xx, 网络错误、超时 | 最多 3 次，等待时间递增并带随机抖动 |
 
 每个调用都接受 `AbortSignal`。中止会立即结束等待，不会重试，并以信号的 reason 拒绝。
@@ -236,14 +269,27 @@ await client.articles.search({ query: 'ticker:TSLA' }, { signal: controller.sign
 | `timeoutMs` | `30000` | 单次 HTTP 尝试的超时（毫秒）。 |
 | `totalTimeoutMs` | - | 可选，整个调用（含重试和等待）的时间上限。 |
 | `maxRetries` | `3` | 5xx、网络错误和超时的重试次数。 |
+| `retryBaseDelayMs` / `retryMaxDelayMs` | `500` / `8000` | 重试之间的退避：首次等待和最长等待（带随机抖动）。 |
 | `retryOnBurst` | `'once'` | 对 429 突发限流：`'once'` 或 `'off'`。 |
-| `burstWaitMs` | `10000` | 突发限流重试前的等待时间，至少 10000。 |
+| `burstWaitMs` | `10000` | 429 没有 `Retry-After` 时，突发重试前的等待时间。 |
 | `maxPages` | `10` | `searchAll` 的页数上限。 |
-| `reconnectOnQuotaExhausted` / `quotaRetryIntervalMs` | `true` / `3600000` | WebSocket 配额用尽时流的行为：每小时重试（设为 `false` 则结束流）。 |
+| `maxResponseBytes` | `33554432` (32 MiB) | REST 响应体的最大大小。 |
+| `companyCacheSize` | `256` | `companies.get` 的 ETag 缓存条目数；0 表示关闭。 |
 | `pingIntervalMs` / `watchdogTimeoutMs` / `rotationIntervalMs` | `25000` / `60000` / `6900000` | 流的 ping、pong 看门狗和连接更换。 |
+| `reconnectBaseDelayMs` / `reconnectMaxDelayMs` | `1000` / `30000` | 流重连退避：首次和最长等待。 |
+| `longBackoffMs` | `60000` | "连接过多"和 429 连接被拒后的等待时间。 |
+| `quotaReconnect` / `quotaReconnectIntervalMs` | `true` / `3600000` | 仅适用于流：WebSocket 配额用尽时每小时重试（`false` 则以错误结束流）。REST 从不等待新配额。 |
+| `searchFailedThreshold` | `5` | 连续出现这么多次 `SEARCH_FAILED` 后，向 `onError` 报告错误。 |
+| `dedupeCacheSize` | `1000` | 每个流去重过滤器的条目数。 |
+| `maxMessageBytes` | `33554432` (32 MiB, min. 16 MiB) | 流入消息的最大大小。 |
+| `connectTimeoutMs` | `30000` | WebSocket 握手超时。 |
 | `fetch` / `wsAgent` | - | 自定义 `fetch`（REST）和 HTTP agent（WebSocket），例如用于代理。此时以它们自己的超时为准；请确保它们不会自行重试。 |
 | `logger` | - | 任何带有 `debug`/`info`/`warn`/`error` 的日志器。 |
 | `clock` | - | 可替换的时钟，用于测试。 |
+
+## 日志
+
+SDK 默认不输出日志。设置 `NODE_DEBUG=finlight` 可查看调试输出，或传入 `logger: console`（或 pino、winston）。它从不记录 API 密钥、Webhook 密钥、签名或完整请求体，也不会安装进程处理器。
 
 ## 数据说明
 
@@ -266,7 +312,7 @@ await client.articles.search({ query: 'ticker:TSLA' }, { signal: controller.sign
 | `sources.getSources()` | `sources.list()` |
 | `client.websocket.connect(params, onArticle)`, `stop()` | `for await (const item of client.stream(params))`, `stream.close()` |
 | raw WebSocket 客户端 | `client.rawStream(params)` |
-| `WebhookService.constructEvent(body, signature, secret, timestamp)` | `Webhooks.constructEvent(rawBody, headers, secret)` |
+| `WebhookService.constructEvent(body, signature, secret, timestamp)` | `Webhooks.constructEvent(rawBody, headers, secret)` or `Webhooks.constructEventFromValues(rawBody, signature, timestamp, secret)` |
 | `logLevel` | 在你自己的 `logger` 中配置级别 |
 | `publishDate` | `publishedAt` |
 | `createdAt` | `firstSeenAt` |
@@ -281,15 +327,25 @@ await client.articles.search({ query: 'ticker:TSLA' }, { signal: controller.sign
 | `isUpdate` | `article.updated` (`item.kind === 'updated'`) |
 | Webhook 请求体 = 文章 | `event.data` + `event.eventId` |
 
-将 Webhook 切换到 v3：
+将 Webhook 切换到 v3，共四步：
 
-1. 部署新版 SDK。对 `WrongPayloadVersion` 返回 2xx，如需数据请保留其 `json`。
-2. 在 finlight 控制台中将 Webhook 切换到 `payloadVersion` 3。
-3. 等待约 2 小时。已排队的重试仍会以旧格式到达。
+1. 部署新版 SDK。
+2. 对 `WrongPayloadVersion` 返回 2xx，如需数据请保留其 `raw` JSON。
+3. 在 finlight 控制台中将 Webhook 切换到 `payloadVersion` 3。
+4. 等待约 2 小时。已排队的重试仍会以旧格式到达。
 
-## 日志
+## 开发
 
-SDK 默认不输出日志。设置 `NODE_DEBUG=finlight` 可查看调试输出，或传入 `logger: console`（或 pino、winston）。它从不记录 API 密钥、Webhook 密钥、签名或完整请求体，也不会安装进程处理器。
+```bash
+npm ci
+npm test                      # unit and conformance tests, no network, no keys
+npm run conformance:check     # vendored kit matches conformance/MANIFEST
+npm run conformance:sync -- --from <monorepo>/shared/contracts/api-v3
+FINLIGHT_API_KEY=... FINLIGHT_BASE_URL=https://api.dev.finlight.me \
+  FINLIGHT_WSS_URL=wss://wss.dev.finlight.me npm run test:live
+```
+
+契约测试包位于 `conformance/`（`CONTRACT_VERSION`、sha256 `MANIFEST`），不会随包发布。每个用例都是一个独立的 jest 测试；`test/conformance/CASES.md` 列出用例与测试的对应关系。在线测试只针对 dev 运行，需要设置全部三个变量；生产地址会被拒绝。
 
 ## 许可证
 

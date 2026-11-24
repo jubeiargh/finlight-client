@@ -2,6 +2,7 @@ import { createServer, type Server } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import { FinlightClient } from '../../src/client';
 import { FinlightApiError } from '../../src/errors';
+import { rawJson } from '../../src/internal/raw';
 import { waitFor } from '../helpers/fake-clock';
 import { caseName, KIT_API_KEY, loadFixture } from '../helpers/kit';
 import { runSession, StreamProbe } from '../helpers/session-runner';
@@ -17,44 +18,6 @@ afterEach(async () => {
 });
 
 const session = (file: string) => loadFixture(`ws-sessions/${file}`);
-
-/**
- * Owner decision 2026-11-24 (rules R-WS-2, R-RETRY-1): an exhausted WebSocket quota is no longer
- * terminal. The stream retries every hour. Kit rc.1 still scripts the old terminal outcome for
- * S-10 and S-24 (rc.3 will change it), so the expectation is rewritten here, and the original
- * script still runs with reconnectOnQuotaExhausted: false.
- */
-function quotaRetrying(fixture: any): any {
-  const steps = fixture.steps.filter((s: any) => !(s.step === 'expect' && s.outcome === 'noReconnect'));
-  return {
-    ...fixture,
-    steps: steps.map((s: any) =>
-      s.step === 'expect' && s.outcome === 'terminalError'
-        ? {
-            step: 'expect',
-            outcome: 'reconnect',
-            reason: 'quota_exceeded',
-            exactDelayMs: 3_600_000,
-            resubscribe: true,
-          }
-        : s,
-    ),
-  };
-}
-
-async function quotaCase(file: string): Promise<void> {
-  const fixture = session(file);
-  await runSession(ws, quotaRetrying(fixture), {
-    after: async ({ probe }) => {
-      expect(probe.quotaWaits).toHaveLength(1);
-      expect(probe.quotaWaits[0]).toMatchObject({ nextAttemptInMs: 3_600_000, attempt: 1 });
-      expect(probe.done).toBe(false);
-    },
-  });
-  await ws.stop();
-  ws = await new WsMock().start();
-  await runSession(ws, fixture, { config: { reconnectOnQuotaExhausted: false } });
-}
 
 describe('R: WebSocket subscribe frames', () => {
   for (const [id, file, raw] of [
@@ -131,8 +94,8 @@ describe('S: WebSocket sessions', () => {
       after: async ({ probe }) => {
         const other = probe.items.find((i) => i.kind === 'other');
         expect(other?.event).toBe('connection.draining');
-        expect(other?.article).toBeNull();
-        expect((other?.frame as any).data.inMs).toBe(30000);
+        expect(other?.data).toBeNull();
+        expect((rawJson(other!) as any).data.inMs).toBe(30000);
       },
     }),
   );
@@ -150,7 +113,7 @@ describe('S: WebSocket sessions', () => {
     await runSession(ws, fixture, { forbiddenKeys: ['include'] });
   });
   test(caseName('S-09'), () => runSession(ws, session('preempted-connection-limit.json')));
-  test(caseName('S-10'), () => quotaCase('preempted-quota-exceeded.json'));
+  test(caseName('S-10'), () => runSession(ws, session('preempted-quota-exceeded.json')));
   test(caseName('S-11'), () => runSession(ws, session('v2-preempt-before-subscribe.json')));
   test(caseName('S-12'), () =>
     runSession(ws, session('v2-invalid-json-error.json'), {
@@ -191,7 +154,7 @@ describe('S: WebSocket sessions', () => {
   test(caseName('S-17'), () =>
     runSession(ws, session('raw-stream.json'), {
       after: async ({ probe }) => {
-        const article = probe.items[0].article!;
+        const article = probe.items[0].data!;
         for (const k of ['content', 'sentiment', 'companies', 'events']) expect(k in article).toBe(false);
         expect(article.availableAt).toBeNull();
         expect(probe.stream.lastSeenAt).toBe(article.firstSeenAt);
@@ -235,7 +198,9 @@ describe('S: WebSocket sessions', () => {
   test(caseName('S-21'), () => runSession(ws, session('dial-malformed-key.json')));
   test(caseName('S-22'), () => runSession(ws, session('dial-no-websockets.json')));
   test(caseName('S-23'), () => runSession(ws, session('dial-too-many-connections.json')));
-  test(caseName('S-24'), () => quotaCase('dial-quota-exceeded.json'));
+  test(caseName('S-24'), () => runSession(ws, session('dial-quota-exceeded.json')));
   test(caseName('S-25'), () => runSession(ws, session('dial-admit-race.json')));
   test(caseName('S-26'), () => runSession(ws, session('dial-server-error.json')));
+  test(caseName('S-27'), () => runSession(ws, session('preempted-quota-exceeded-no-reconnect.json')));
+  test(caseName('S-28'), () => runSession(ws, session('dial-quota-exceeded-no-reconnect.json')));
 });

@@ -29,10 +29,11 @@ this text and a fixture disagree; `conformance.md` lists the cases every client 
 - Success is `application/json`. Errors from the v3 routes are `application/problem+json` (2.8).
 - Metering and throttling apply to the article endpoints (`/v3/articles/search`, `/v3/articles/{id}`,
   `/v3/articles/by-link`):
-  - Monthly quota exhausted: 429 `RATE_LIMITED`, `detail` starts with
-    `Throttling Exception: Exceeded token limit`.
-  - Burst limit: 429 `RATE_LIMITED`, `detail` starts with `Throttling Exception: Exceeded rate limit`.
-  - There are no rate-limit headers and no `Retry-After`. The `detail` prefix is the only way to tell the two apart.
+  - Monthly quota exhausted: 429 `RATE_LIMITED` with `"limitType": "monthly"` and no `Retry-After`.
+  - Burst limit: 429 `RATE_LIMITED` with `"limitType": "burst"` and a `Retry-After` header in seconds (the rest
+    of the 10-second window, 1 to 10).
+  - Tell the two apart by `limitType`, not by `detail` (the text is not stable). `limitType` is an open list: an
+    unknown value is kept as a string and not retried. There are no other rate-limit headers.
   - A request that fails validation has already been counted.
 - `X-Request-Id`: when sent, it is echoed as `requestId` in error bodies. Without it the server generates
   `req_<uuid>`. It is not returned as a response header.
@@ -102,7 +103,7 @@ Response 200: `{"articles": Article[], "pagination": {"limit", "returned", "hasM
 | `link` | string | always | |
 | `source` | object | always | `{domain: string, type: string\|null}`. `type` is null today. |
 | `title` | string | always | Original-language title. |
-| `summary` | string\|null | always | Can be `""` on older data; delivered as is. |
+| `summary` | string\|null | always | Never `""`: an empty or whitespace-only summary is delivered as `null`. |
 | `language` | string\|null | always | ISO 639-1. |
 | `media` | `{url}[]` | always, may be `[]` | Images, at most 3. |
 | `publishedAt` | string\|null | always | As claimed by the source. Legacy data can carry `1970-01-01T00:00:00.000Z`; delivered as is. |
@@ -111,7 +112,7 @@ Response 200: `{"articles": Article[], "pagination": {"limit", "returned", "hasM
 | `availableAt` | string\|null | always | When the enriched article became available. Null on older data and always null on raw. |
 | `countries` | string[] | always, may be `[]` | |
 | `categories` | string[] | always, may be `[]` | Open vocabulary. |
-| `content` | string\|null | gated | Present only with `include: content` and full-article access; never on raw. |
+| `content` | string\|null | gated | Present only with `include: content` and full-article access; never on raw. Never `""`: empty or whitespace-only is `null`. |
 | `sentiment` | object\|null | gated | Present with sentiment access (no include needed); never on raw. `{label: string\|null, confidence: number\|null}`. |
 | `companies` | Company[] | gated | Present only with `include: companies` and entity access. `[]` = tagged, no company. |
 | `events` | Event[] | gated | Present only with `include: events` and event access. `[]` = classified, no event. |
@@ -140,7 +141,9 @@ an empty body. A non-integer id is a 400; an unknown id a 404.
 
 CompanyRecord: `{companyId, name, country|null, sector|null, industry|null, isins: string[],
 primaryListing: {ticker, mic, country}|null, listings: {ticker, mic, country, active}[], updatedAt|null}`.
-`listings` includes the primary listing and expired ones (`active: false`).
+`listings` names each exchange (`mic`) at most once. The primary listing is always in it and comes first; for every
+other exchange the server picks one listing (active before expired, then the primary's symbol, then the shortest).
+Expired listings appear (`active: false`) where they are the only one on their exchange.
 
 The company endpoints are not metered.
 
@@ -179,7 +182,7 @@ languages: string[], hasContent?: boolean}`. `hasContent` is present only with f
 | `UNAUTHORIZED` | 401 | Missing or invalid API key. |
 | `FORBIDDEN` | 403 | Entity access missing on `/v3/companies*`. |
 | `NOT_FOUND` | 404 | Lookup miss. |
-| `RATE_LIMITED` | 429 | Monthly quota or burst limit (see 2.1). |
+| `RATE_LIMITED` | 429 | Monthly quota or burst limit; member `limitType` (`monthly`, `burst`), burst with `Retry-After` (see 2.1). |
 | `INTERNAL_ERROR` | 500 | `detail` is always `The request could not be processed.` |
 
 Problem codes are an open list. Two failures come back in the framework's default form `{statusCode, message, error}`
@@ -187,8 +190,10 @@ instead of problem+json: a malformed JSON body (400) and an unknown route (404).
 and `message`. Infrastructure in front of the API can answer with a non-JSON body (for example a 502 HTML page).
 
 **Retry model (all clients)**
-- Never retried: 400, 401, 403, 404, and a monthly 429.
-- Burst 429: one retry after at least 10 s (configurable, can be switched off).
+- Never retried: 400, 401, 403, 404, and a 429 with `limitType` `monthly` (or a value the client does not know).
+  A REST call never waits for a new quota period: a monthly 429 fails at once, inside `searchAll` too.
+- Burst 429 (`limitType: "burst"`): one retry after exactly `Retry-After` seconds, 10 when the header is missing.
+  On by default, can be switched off; it does not count against the normal retries.
 - 5xx, non-JSON gateway errors and network errors: exponential backoff, POST search included.
 - One `X-Request-Id` per logical call, reused on every retry.
 
@@ -209,7 +214,7 @@ and `message`. Infrastructure in front of the API can answer with a non-JSON bod
 | 401 | `{"message":"Invalid API key"}` / `{"message":"Invalid API key format"}` | Invalid key. | terminal |
 | 403 | `{"message":"Your subscription does not include WebSockets"}` | Plan without WebSockets. | terminal |
 | 403 | `{"message":"Too many concurrent connections. Use x-takeover: true header to replace an existing connection."}` | At the connection limit. | reconnect, long backoff (first retry after about 60 s), takeover hint |
-| 403 | `{"message":"WebSocket quota exceeded for the current period"}` | Delivery quota used up. | terminal |
+| 403 | `{"message":"WebSocket quota exceeded for the current period"}` | Delivery quota used up. | redial once per hour, each attempt reported (default; terminal when switched off) |
 | 403 | `{"message":"Too many concurrent connections"}` | Lost a race at admission. | reconnect with backoff |
 | 500 | `{"error":"Internal server error"}` | Server error. | reconnect with backoff |
 
@@ -269,9 +274,12 @@ dispatches on `event` first and falls back to `action`. This is protocol handlin
 
 - Ping with `{"action":"ping","t":<number>}` every 25 s. Either pong form refreshes a 60 s watchdog; without a pong
   for 60 s the client reconnects and re-sends the same subscribe.
-- Terminal (stream ends with a typed error, no reconnect): dial 401; dial 403 "does not include WebSockets"; dial 403
-  "quota exceeded"; `VALIDATION_FAILED`; `connection.preempted` (either reason, as `PreemptedError{reason, newLeaseId}`);
-  close code 1008.
+- Terminal (stream ends with a typed error, no reconnect): dial 401; dial 403 "does not include WebSockets";
+  `VALIDATION_FAILED`; `connection.preempted` with reason `connection_limit` (as `PreemptedError{reason, newLeaseId}`);
+  close code 1008. Dial refusals and `VALIDATION_FAILED` surface as `FinlightApiError` (kind from the status or code).
+- Quota exhausted (dial 403 "quota exceeded", `connection.preempted` with reason `quota_exceeded`): by default the
+  stream keeps running and redials once per hour until the quota allows it; every wait is logged as a warning and
+  passed to a quota hook. Switched off, both are terminal (`FinlightApiError` 403 and `PreemptedError`).
 - Reconnect with backoff: dial 403 "Too many concurrent connections"; dial 5xx; `HANDSHAKE_FAILED`; `SEARCH_FAILED`
   (surface as an error after 5 consecutive failures); abnormal close; watchdog; rotation at about 115 minutes.
 - Log only: `PING_ON_DEFAULT_ROUTE`, `INTERNAL_ERROR`, unknown codes and unknown events.
@@ -339,9 +347,9 @@ Header lookup is case-insensitive.
 
 A webhook is switched between v2 and v3 in the dashboard. Retries queued before a switch are still delivered in the
 old format for up to about 2 hours. A v3 client therefore checks `payloadVersion` after verifying the signature: a
-body without `payloadVersion: 3` is reported as **wrong payload version** (`PayloadVersionMismatch`), carrying the
-parsed JSON and its `link`, and is never decoded as a half-empty v3 event. The handler decides how to answer; a 2xx
-avoids counting the delivery as a failure.
+body without `payloadVersion: 3` is returned as a **`WrongPayloadVersion` result** (not an error; Go alone reports it
+as `*webhook.WrongPayloadVersionError`), carrying the detected version, the raw `payloadVersion`, the parsed JSON and
+its `link`, and is never decoded as a half-empty v3 event. Answer it with 2xx so the delivery does not count as a failure.
 
 ## 5. Entitlements and the absent / null / [] rules
 
@@ -349,7 +357,8 @@ Plan features that change payloads: full-article access (`content`, `/v3/sources
 (`sentiment`), entity access (`companies`, `/v3/companies*`), event access (`events`).
 
 1. **Absent** key: not entitled, not requested through `include`, or not available on the channel (raw).
-2. **null**: requested and entitled, but no value exists (yet).
+2. **null**: requested and entitled, but no value exists (yet). Text fields (`summary`, `content`) are never `""`:
+   no text is `null`.
 3. Arrays are never null; `[]` is a real empty set.
 4. Every key outside the gated blocks is always present.
 
@@ -362,8 +371,9 @@ Plan features that change payloads: full-article access (`content`, `/v3/sources
 | `events[].companyIds` | present iff `companies` is present in the same payload | n/a |
 | `availableAt` | always present, nullable | always null |
 
-Clients keep the three states apart (never coerce absent to `false`, `0` or `[]`) and offer `hasContent`,
-`hasSentiment`, `hasCompanies`, `hasEvents` helpers. Only `id`, `link`, `title` and `source.domain` are required
+Clients keep the three states apart (never coerce absent to `false`, `0` or `[]`) and offer the presence helpers
+`contentPresent`, `sentimentPresent`, `companiesPresent`, `eventsPresent` (not `hasContent`, which is a search filter
+and a `Source` field). Only `id`, `link`, `title` and `source.domain` are required
 when decoding; timestamps decode fail-soft.
 
 ## 6. Forward compatibility
@@ -372,7 +382,7 @@ when decoding; timestamps decode fail-soft.
   `wordCount`, `sentiment.score`, `events[].subtype`, `story`, and others).
 - Response enums are open: `event`, `connection.*` names, `connection.error` codes, `sentiment.label`,
   `companies[].role`, `events[].type/direction/importance`, `source.type`, `/v3/sources type`, `categories`,
-  preempt reasons, problem codes. Model them as a string plus known constants and keep unknown values.
+  preempt reasons, problem codes, the 429 `limitType`. Model them as a string plus known constants and keep unknown values.
 - Request vocabularies are validated by the server (400 with `allowedValues`) and can grow without an SDK release;
   clients do not block unknown values. Clients do run cheap structural checks: `limit` 1 to 100, non-empty
   `languages`, `q` xor `ids`, at most 10 ids, no `include` on raw, no unknown request keys.

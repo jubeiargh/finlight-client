@@ -1,19 +1,21 @@
-# finlight クライアント（TypeScript / Node.js）
+# finlight クライアント（TypeScript）
 
 *[English](README.md) | [简体中文](README.zh-CN.md) | 日本語 | [한국어](README.ko.md)*
 
-> **互換性のない変更：** 4.x は finlight API v3 のみに対応します（REST `/v3`、WebSocket `payloadVersion` 3、v3 Webhook）。3.x のコードとは互換性がありません。アップグレードの前に[移行の説明](#migration)と[変更履歴](CHANGELOG.md)をお読みください。API v2 を使い続ける場合は `finlight-client@^3` に固定してください。
+> **Breaking release.** 4.x は finlight API v3 のみに対応し（REST `/v3`、WebSocket `payloadVersion` 3、v3 Webhook）、3.x のコードは動きません。まず [3.x からの移行](#migration)と[変更履歴](CHANGELOG.md)をお読みください。API v2 を使い続ける場合は `finlight-client@^3` に固定してください。
 
-*この文書は英語版 README の翻訳です。内容が異なる場合は英語版が優先されます。*
+*この文書は英語版 README の翻訳で、英語版に合わせて順次更新されます。内容が異なる場合は英語版が優先されます。*
 
 [finlight.me](https://finlight.me) 用の型付きクライアントです。金融ニュースの検索、記事・企業・ソースの参照、WebSocket による記事のライブ受信、Webhook の検証ができます。
 
 ## バージョン
 
-| SDK メジャー | finlight API | 状態 |
+| SDK バージョン | API バージョン | 状態 |
 |---|---|---|
 | 4.x | v3 (`/v3`, WebSocket `payloadVersion` 3, webhooks v3) | 最新 |
 | 3.x | v1/v2 | 今後のリリースなし |
+
+SDK と API のバージョンは独立しています。新しい API フィールドは互換性のある 4.x リリースで追加されます。API v3 に対応する SDK：TypeScript 4.x、Python 3.x、PHP 2.x、Go `/v2`、.NET 2.x、Java 1.x、Ruby 1.x、Rust 0.2。
 
 `^3` や `~3` が 4.x に解決されることはありません。`*` や `>=3` のような開いた範囲は解決されるため、メジャーを固定してください。
 
@@ -47,7 +49,7 @@ for (const article of page.articles) console.log(article.publishedAt, article.ti
 
 SDK は指定されたパラメータだけを送信し、既定値を追加しません。`limit`（20）、`languages`（`['en']`）、期間はサーバーが決めます。SDK が知らないパラメータ名は、リクエストの前に `FinlightValidationError` になります。サーバーはそれを黙って無視し、しかも呼び出しとして数えるためです。
 
-## 検索
+## 記事の検索
 
 `articles.search` は 1 ページを返します。`articles.searchAll` はカーソルを自動でたどります。
 
@@ -75,23 +77,30 @@ for await (const p of client.articles.searchAll({ query: 'eventType:mna' }).page
 - `from` と `to` は `Date`（ミリ秒付き UTC で送信）または文字列（そのまま送信）を受け取り、`orderBy` のタイムスタンプに適用されます。
 - デコードできないエントリはスキップされ、ログに記録され、`page.skipped` に入ります。ページの残りはそのまま使えます。
 
-## 参照
+## 記事・企業・ソースの参照
 
 ```ts
+import { cacheInfo } from 'finlight-client';
+
 const article = await client.articles.get('pXhK9f2aQ1mZ0bT7cY3rLw', { include: ['content'] });
 const byLink = await client.articles.getByLink('https://www.reuters.com/markets/example', { include: ['companies'] });
 
 const [nvidia] = await client.companies.search({ q: 'NVDA', mic: 'XNAS' });
 const many = await client.companies.getMany([4821, 1234]);
 const record = await client.companies.get(4821); // ETag revalidation is built in
+console.log(cacheInfo(record)?.etag, many.skipped.length);
+
+// With your own ETag: null means "not modified"
+const fresh = await client.companies.get(4821, { ifNoneMatch: '"80b88d6b…"' });
 
 const sources = await client.sources.list();
 ```
 
-- 404 は空の結果ではなく、`apiKind: 'not_found'` の `FinlightApiError` です。
+- 404 は空の結果ではなく `NotFoundError`（`apiKind: 'not_found'`）です。
 - id 導入前に登録された記事は id で参照できません。`getByLink` を使ってください。
-- 企業のエンドポイントには `entityAccess` の権限が必要です。ない場合は 403 になります。
-- `companies.get` は ETag を保持して再検証します。304 のときはキャッシュしたレコードを返します。`cacheInfo(record)` で ETag を確認できます。
+- 企業のエンドポイントには `entityAccess` の権限が必要です。ない場合は 403（`ForbiddenError`）になります。
+- `companies.get` は ETag を保持して再検証し、304 のときはキャッシュしたレコードを返します。`cacheInfo(record)` で ETag を確認できます。独自の `ifNoneMatch` を渡した場合、304 は `null`（「変更なし」）になります。
+- `companies.search`、`companies.getMany`、`sources.list` は配列を返し、デコードできなかったエントリを `skipped` フィールドに持ちます。
 
 ## キーなし、null、空リスト
 
@@ -118,7 +127,7 @@ const published: Date | null = toDate(article.publishedAt); // strict RFC 3339, 
 - タイムスタンプは送られたままの文字列です。`toDate()` が厳密に解析します。
 - 新しいサーバーからの未知のキーはオブジェクトに残ります。`rawJson(value)` は受信した JSON を返します。
 
-## ライブストリーム
+## リアルタイムストリーム
 
 `client.stream()` はエンリッチ済みの記事を、`client.rawStream()` はエンリッチ前の記事の骨格を受信します。どちらも最初の反復で接続します。SDK は 25 秒ごとに ping を送り、60 秒 pong がなければ再接続し、115 分後に接続を更新し、重複を取り除きます。
 
@@ -133,13 +142,13 @@ const stream = client.stream(
 );
 
 for await (const item of stream) {
-  if (item.kind === 'created' || item.kind === 'updated') console.log(item.kind, item.article?.title);
-  // item.kind === 'other': an event this SDK version does not know yet (item.frame has it)
+  if (item.kind === 'created' || item.kind === 'updated') console.log(item.kind, item.data?.title);
+  // item.kind === 'other': an event this SDK version does not know yet; rawJson(item) has the frame
 }
 
 // Raw: the article skeleton before enrichment; no include
 for await (const item of client.rawStream({ query: 'source:www.reuters.com' })) {
-  console.log(item.article?.firstSeenAt, item.article?.title);
+  console.log(item.data?.firstSeenAt, item.data?.title);
 }
 ```
 
@@ -153,7 +162,7 @@ for await (const item of client.rawStream({ query: 'source:www.reuters.com' })) 
 - SDK はデータを自動で補完しません。`onReconnect` が `lastSeenAt` を渡すので、REST で欠けた分を取得できます。
 - ループを抜ける、`stream.close()` を呼ぶ、または abort シグナルで、ソケットが閉じられすべてのタイマーが止まります。
 - キーの拒否、WebSocket を含まないプラン、無効な購読、理由が `connection_limit` のプリエンプション（`PreemptedError`）では、ストリームはエラーで終わります。その他の問題は `onError` に渡され、ストリームは動き続けます。
-- **WebSocket クォータの枯渇。** 期間のクォータを使い切ると（接続の拒否、または理由が `quota_exceeded` のプリエンプション）、ストリームは終わらず、クォータが再び許すまで 1 時間ごとに再試行します。各試行は警告としてログに記録され、`onQuotaWait` に通知されます。`reconnectOnQuotaExhausted: false` にするとエラーでストリームを終えます。間隔は `quotaRetryIntervalMs` で変更できます。REST の呼び出しは待ちません。月間の 429 はすぐに失敗します。
+- **WebSocket クォータの枯渇。** 期間のクォータを使い切ると（接続の拒否、または理由が `quota_exceeded` のプリエンプション）、ストリームは終わらず、クォータが再び許すまで 1 時間ごとに再試行します。各試行は警告としてログに記録され、`onQuotaWait` に通知されます。`quotaReconnect: false` にするとエラーでストリームを終えます。間隔は `quotaReconnectIntervalMs` で変更できます。REST の呼び出しは待ちません。月間の 429 はすぐに失敗します。
 - `rawStream` には `include` もエンリッチ用のフィルタもありません。
 
 ## Webhook
@@ -196,20 +205,44 @@ app.post('/finlight', express.raw({ type: 'application/json' }), (req, res) => {
 ## エラーと再試行
 
 ```ts
-import { isFinlightApiError, FinlightValidationError, PreemptedError } from 'finlight-client';
+import { isFinlightApiError, NotFoundError, RateLimitedError } from 'finlight-client';
 
 try {
   await client.articles.search({ eventTypes: ['earnigns'] });
 } catch (err) {
-  if (isFinlightApiError(err)) {
+  if (err instanceof RateLimitedError && err.limitType === 'monthly') {
+    console.log('quota used up for this period');
+  } else if (err instanceof NotFoundError) {
+    console.log('not found');
+  } else if (isFinlightApiError(err)) {
     console.log(err.status, err.code, err.apiKind, err.detail, err.requestId);
     for (const e of err.errors) console.log(e.field, e.issue, e.allowedValues);
-    if (err.limitType === 'monthly') console.log('quota used up for this period');
   }
 }
 ```
 
-SDK のエラーはすべて `FinlightError` を継承し、`kind` フィールド（`api`、`validation`、`network`、`timeout`、`decode`、`webhook_verification`、`preempted`）を持ちます。`FinlightApiError` には `status`、`code`、`title`、`detail`、`requestId`、`errors[]`、`apiKind` があります。論理的な呼び出しごとに専用の `X-Request-Id` を送り、再試行でも同じ値を使います。再試行のルール：
+SDK のエラーはすべて `FinlightError` を継承し、`kind` フィールドを持ちます。API エラーには `status`、`code`、`title`、`detail`、`requestId`、`errors`（`FieldIssue[]`）、`apiKind`、`raw`（受信した本文。`rawJson(err)` は解析済みの JSON を返します）があります。論理的な呼び出しごとに専用の `X-Request-Id` を送り、再試行でも同じ値を使います。
+
+```text
+FinlightError                    kind
+├── FinlightApiError             api (apiKind: one per problem code, or other)
+│   ├── ValidationFailedError    validation_failed
+│   ├── CursorInvalidError       cursor_invalid
+│   ├── CursorMismatchError      cursor_mismatch
+│   ├── UnauthorizedError        unauthorized
+│   ├── ForbiddenError           forbidden
+│   ├── NotFoundError            not_found
+│   ├── RateLimitedError         rate_limited (limitType, retryAfterMs)
+│   └── InternalServerError      internal_error
+├── FinlightValidationError      validation
+├── FinlightNetworkError         network
+│   └── FinlightTimeoutError     timeout
+├── FinlightDecodeError          decode
+├── WebhookVerificationError     webhook_verification
+└── PreemptedError               preempted
+```
+
+再試行のルール：
 
 | 応答 | 再試行 |
 |---|---|
@@ -236,14 +269,27 @@ await client.articles.search({ query: 'ticker:TSLA' }, { signal: controller.sign
 | `timeoutMs` | `30000` | HTTP 試行 1 回のタイムアウト（ミリ秒）。 |
 | `totalTimeoutMs` | - | 任意。再試行と待機を含む呼び出し全体の上限。 |
 | `maxRetries` | `3` | 5xx、ネットワークエラー、タイムアウトの再試行回数。 |
+| `retryBaseDelayMs` / `retryMaxDelayMs` | `500` / `8000` | 再試行間のバックオフ：最初と最長の待ち時間（ゆらぎ付き）。 |
 | `retryOnBurst` | `'once'` | 429 バースト応答に対して `'once'` または `'off'`。 |
-| `burstWaitMs` | `10000` | バースト再試行の前の待ち時間。最低 10000。 |
+| `burstWaitMs` | `10000` | 429 に `Retry-After` がない場合のバースト再試行前の待ち時間。 |
 | `maxPages` | `10` | `searchAll` のページ数の上限。 |
-| `reconnectOnQuotaExhausted` / `quotaRetryIntervalMs` | `true` / `3600000` | WebSocket クォータ枯渇時のストリームの動作：1 時間ごとに再試行（`false` ならストリームを終了）。 |
+| `maxResponseBytes` | `33554432` (32 MiB) | REST 応答本文の最大サイズ。 |
+| `companyCacheSize` | `256` | `companies.get` の ETag キャッシュの件数。0 で無効。 |
 | `pingIntervalMs` / `watchdogTimeoutMs` / `rotationIntervalMs` | `25000` / `60000` / `6900000` | ストリームの ping、pong ウォッチドッグ、接続の更新。 |
+| `reconnectBaseDelayMs` / `reconnectMaxDelayMs` | `1000` / `30000` | ストリーム再接続のバックオフ：最初と最長の待ち時間。 |
+| `longBackoffMs` | `60000` | 「接続数超過」と 429 による接続拒否の後の待ち時間。 |
+| `quotaReconnect` / `quotaReconnectIntervalMs` | `true` / `3600000` | ストリームのみ：WebSocket クォータを使い切ると 1 時間ごとに再試行（`false` ならエラーでストリームを終了）。REST は新しいクォータを待ちません。 |
+| `searchFailedThreshold` | `5` | `SEARCH_FAILED` がこの回数連続すると `onError` にエラーを渡します。 |
+| `dedupeCacheSize` | `1000` | ストリームごとの重複フィルタの件数。 |
+| `maxMessageBytes` | `33554432` (32 MiB, min. 16 MiB) | 受信するストリームメッセージの最大サイズ。 |
+| `connectTimeoutMs` | `30000` | WebSocket ハンドシェイクのタイムアウト。 |
 | `fetch` / `wsAgent` | - | 独自の `fetch`（REST）と HTTP エージェント（WebSocket）。例えばプロキシ用です。その場合はそれら自身のタイムアウトが適用されます。独自に再試行しないようにしてください。 |
 | `logger` | - | `debug`/`info`/`warn`/`error` を持つ任意のロガー。 |
 | `clock` | - | テスト用に差し替え可能な時計。 |
+
+## ログ
+
+SDK は既定では何も出力しません。`NODE_DEBUG=finlight` でデバッグ出力が表示されます。または `logger: console`（あるいは pino、winston）を渡してください。API キー、Webhook シークレット、署名、本文全体をログに出すことはなく、プロセスハンドラーも登録しません。
 
 ## データについて
 
@@ -266,7 +312,7 @@ await client.articles.search({ query: 'ticker:TSLA' }, { signal: controller.sign
 | `sources.getSources()` | `sources.list()` |
 | `client.websocket.connect(params, onArticle)`, `stop()` | `for await (const item of client.stream(params))`, `stream.close()` |
 | raw WebSocket クライアント | `client.rawStream(params)` |
-| `WebhookService.constructEvent(body, signature, secret, timestamp)` | `Webhooks.constructEvent(rawBody, headers, secret)` |
+| `WebhookService.constructEvent(body, signature, secret, timestamp)` | `Webhooks.constructEvent(rawBody, headers, secret)` or `Webhooks.constructEventFromValues(rawBody, signature, timestamp, secret)` |
 | `logLevel` | レベルは自分の `logger` で設定 |
 | `publishDate` | `publishedAt` |
 | `createdAt` | `firstSeenAt` |
@@ -281,15 +327,25 @@ await client.articles.search({ query: 'ticker:TSLA' }, { signal: controller.sign
 | `isUpdate` | `article.updated` (`item.kind === 'updated'`) |
 | Webhook の本文 = 記事 | `event.data` + `event.eventId` |
 
-Webhook を v3 に切り替える手順：
+Webhook を v3 に切り替える 4 つの手順：
 
-1. 新しい SDK をデプロイします。`WrongPayloadVersion` には 2xx を返し、データが必要なら `json` を保存します。
-2. finlight のダッシュボードで Webhook を `payloadVersion` 3 に切り替えます。
-3. 約 2 時間待ちます。すでにキューに入っている再試行は古い形式で届きます。
+1. 新しい SDK をデプロイします。
+2. `WrongPayloadVersion` には 2xx を返し、データが必要なら `raw` の JSON を保存します。
+3. finlight のダッシュボードで Webhook を `payloadVersion` 3 に切り替えます。
+4. 約 2 時間待ちます。すでにキューに入っている再試行は古い形式で届きます。
 
-## ログ
+## 開発
 
-SDK は既定では何も出力しません。`NODE_DEBUG=finlight` でデバッグ出力が表示されます。または `logger: console`（あるいは pino、winston）を渡してください。API キー、Webhook シークレット、署名、本文全体をログに出すことはなく、プロセスハンドラーも登録しません。
+```bash
+npm ci
+npm test                      # unit and conformance tests, no network, no keys
+npm run conformance:check     # vendored kit matches conformance/MANIFEST
+npm run conformance:sync -- --from <monorepo>/shared/contracts/api-v3
+FINLIGHT_API_KEY=... FINLIGHT_BASE_URL=https://api.dev.finlight.me \
+  FINLIGHT_WSS_URL=wss://wss.dev.finlight.me npm run test:live
+```
+
+契約キットは `conformance/`（`CONTRACT_VERSION`、sha256 の `MANIFEST`）にあり、パッケージには含まれません。キットの各ケースは個別の jest テストとして実行され、`test/conformance/CASES.md` がケースとテストを対応付けます。ライブテストは dev に対してのみ、3 つの変数がすべて設定されたときに実行され、本番のホストは拒否されます。
 
 ## ライセンス
 

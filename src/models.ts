@@ -43,11 +43,8 @@ export interface Listing {
   mic: string | null;
   /** ISO 3166-1 alpha-2. */
   country: string | null;
-}
-
-/** A listing of a company record; `active: false` for expired listings. */
-export interface CompanyListing extends Listing {
-  active: boolean | null;
+  /** Only in `CompanyRecord.listings`: `false` for expired listings. */
+  active?: boolean | null;
 }
 
 /** A company tagged on an article. */
@@ -134,7 +131,7 @@ export interface CompanyRecord {
   isins: string[];
   primaryListing: Listing | null;
   /** Includes the primary listing and expired ones. */
-  listings: CompanyListing[];
+  listings: Listing[];
   updatedAt: string | null;
 }
 
@@ -152,20 +149,24 @@ export interface Source {
   languages: string[];
 }
 
+/** Result of `companies.search` and `companies.getMany`: the records plus `skipped`. */
+export type CompanyList = CompanyRecord[] & { readonly skipped: SkippedEntry[] };
+
+/** Result of `sources.list`: the sources plus `skipped`. */
+export type SourceList = Source[] & { readonly skipped: SkippedEntry[] };
+
 /** Kind of a stream item. */
 export type StreamEventKind = 'created' | 'updated' | 'other';
 
 /**
- * One item of a stream. `created`/`updated` carry the article; `other` is an event this
- * SDK version does not know yet, with the frame kept as it arrived.
+ * One item of a stream. `created`/`updated` carry the article in `data`; `other` is an event
+ * this SDK version does not know yet (`data` is null). `rawJson(event)` returns the whole frame.
  */
 export interface StreamEvent {
   readonly kind: StreamEventKind;
   /** Wire event name, e.g. `article.created` (open). */
   readonly event: StreamEventName;
-  readonly article: Article | null;
-  /** The frame as received (parsed JSON). */
-  readonly frame: Readonly<Record<string, unknown>>;
+  readonly data: Article | null;
 }
 
 /** A verified v3 webhook delivery. */

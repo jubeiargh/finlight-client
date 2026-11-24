@@ -1,5 +1,28 @@
 import { cacheInfo } from '../../src/companies';
-import { FinlightApiError, FinlightValidationError } from '../../src/errors';
+import {
+  CursorInvalidError,
+  CursorMismatchError,
+  FinlightApiError,
+  FinlightValidationError,
+  ForbiddenError,
+  InternalServerError,
+  NotFoundError,
+  RateLimitedError,
+  UnauthorizedError,
+  ValidationFailedError,
+} from '../../src/errors';
+import { rawJson } from '../../src/internal/raw';
+
+const SUBCLASS: Record<string, any> = {
+  validation_failed: ValidationFailedError,
+  cursor_invalid: CursorInvalidError,
+  cursor_mismatch: CursorMismatchError,
+  unauthorized: UnauthorizedError,
+  forbidden: ForbiddenError,
+  not_found: NotFoundError,
+  rate_limited: RateLimitedError,
+  internal_error: InternalServerError,
+};
 import { contentPresent } from '../../src/models';
 import { HttpMock } from '../helpers/http-mock';
 import { queryPairs, restClient, transport } from '../helpers/clients';
@@ -122,7 +145,10 @@ describe('R: requests', () => {
     const record = await client.companies.get(f.sdk.args.companyId);
     expectRequest(0, f.request);
     expect(record.companyId).toBe(900001);
-    expect(record.listings).toHaveLength(2);
+    const mics = record.listings.map((l) => l.mic);
+    expect(new Set(mics).size).toBe(mics.length);
+    expect(record.listings[0].mic).toBe(record.primaryListing?.mic);
+    expect(record.listings).toEqual(f.response.body.company.listings);
     expect(cacheInfo(record)).toEqual({
       etag: f.response.headers.etag,
       cacheControl: f.response.headers['cache-control'],
@@ -144,10 +170,11 @@ describe('R: requests', () => {
     expect(mock.requests[1].headers['if-none-match']).toBe(f.request.headers['If-None-Match']);
     // fetch would add Cache-Control: no-cache, which makes the server skip the 304.
     expect(mock.requests[1].headers['cache-control'] ?? '').not.toMatch(/no-cache/);
-    expect(again).toBe(record);
-    expect(cacheInfo(again)?.notModified).toBe(true);
-    // Automatic revalidation with the cached ETag.
+    // A caller-supplied ETag: "not modified" is null, never an error.
+    expect(again).toBeNull();
+    // Automatic revalidation with the SDK's own cached ETag returns the cached record.
     const third = await client.companies.get(900001);
+    expect(cacheInfo(third)?.notModified).toBe(true);
     expect(mock.requests[2].headers['if-none-match']).toBe(f.request.headers['If-None-Match']);
     expect(third).toBe(record);
   });
@@ -305,10 +332,19 @@ describe('E: errors and retry classes', () => {
       if (expected.code === 'NESTJS_FALLBACK') {
         expect(err.code).toBeNull();
         expect(err.detail).toBe(f.response.body.message);
-        expect(err.apiKind).toBe(f.response.status === 400 ? 'validation_failed' : 'not_found');
       } else {
         expect(err.code).toBe(expected.code);
       }
+      // apiKind and the subclass of that kind.
+      expect(err.apiKind).toBe(expected.apiKind);
+      const subclass = SUBCLASS[expected.apiKind];
+      if (subclass) expect(err).toBeInstanceOf(subclass);
+      else expect(err.constructor).toBe(FinlightApiError);
+      // raw is the body as received; rawJson() gives the parsed tree.
+      const bodyText =
+        typeof f.response.body === 'string' ? f.response.body : JSON.stringify(f.response.body);
+      expect(err.raw).toBe(bodyText);
+      if (typeof f.response.body === 'object') expect(rawJson(err)).toEqual(f.response.body);
       // requestId: the server value, else the X-Request-Id the SDK sent.
       const serverId = typeof f.response.body === 'object' ? f.response.body?.requestId : undefined;
       const sentId = mock.requests[0].headers['x-request-id'];
@@ -333,16 +369,22 @@ describe('E: errors and retry classes', () => {
       }
       if (expected.retry === 'once-after-burst-wait') {
         expect(attempts).toBe(2);
-        expect(clock.sleeps[0]).toBeGreaterThanOrEqual(10_000);
+        // Exactly Retry-After (7 s here); 10 s only without the header.
+        const retryAfter = Number(f.response.headers['retry-after']);
+        expect(clock.sleeps).toEqual([Number.isFinite(retryAfter) ? retryAfter * 1000 : 10_000]);
+        expect(err.retryAfterMs).toBe(retryAfter * 1000);
       }
       expect(new Set(mock.requests.map((r) => r.headers['x-request-id'])).size).toBe(1);
 
-      if (id === 'E-18') expect(err.limitType).toBe('monthly');
+      if (id === 'E-18') {
+        expect(err.limitType).toBe('monthly');
+        expect(err.retryAfterMs).toBeNull();
+        expect(clock.sleeps).toEqual([]);
+      }
       if (id === 'E-19') expect(err.limitType).toBe('burst');
       if (id === 'E-20') expect(err.detail).toBe('The request could not be processed.');
       if (id === 'E-24') {
         expect(err.code).toBeNull();
-        expect(err.raw).toBe(f.response.body);
       }
       if (id === 'E-23') expect(err.requestId).toMatch(/^req_/);
       if (id === 'E-02') expect(err.detail).toMatch(/^\d+ request fields are not valid\.$/);

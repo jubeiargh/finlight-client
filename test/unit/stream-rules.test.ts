@@ -266,7 +266,7 @@ describe('R-WS-6: stream lifecycle', () => {
       dial.conn!.send('not json');
       dial.conn!.send({ event: 'article.created', payloadVersion: 3, data: ARTICLE });
       await waitFor(() => probe.items.length === 1, 'item');
-      expect(probe.items[0].article?.id).toBe(ARTICLE.id);
+      expect(probe.items[0].data?.id).toBe(ARTICLE.id);
       expect(probe.errors).toHaveLength(0);
     } finally {
       await probe.stop();
@@ -330,7 +330,7 @@ describe('R-WS-2: exhausted quota (owner decision 2026-11-24)', () => {
       await waitFor(() => probe.scheduled.length === 2, 'second quota wait');
       expect(probe.scheduled[1].delayMs).toBe(3_600_000);
       expect(probe.quotaWaits.map((q) => q.attempt)).toEqual([1, 2]);
-      expect(probe.quotaWaits.every((q) => q.kind === 'api')).toBe(true);
+      expect(probe.quotaWaits.every((q) => q.error.kind === 'api')).toBe(true);
       expect(warnings.filter((w) => /quota exhausted/.test(w))).toHaveLength(2);
       await probe.advance(3_600_000);
       const ok = await ws.nextDial();
@@ -353,7 +353,7 @@ describe('R-WS-2: exhausted quota (owner decision 2026-11-24)', () => {
     const probe = new StreamProbe(ws, {
       raw: false,
       params: {},
-      config: { quotaRetryIntervalMs: 120_000 },
+      config: { quotaReconnectIntervalMs: 120_000 },
     }).start();
     try {
       await waitFor(() => probe.scheduled.length === 1, 'quota wait');
@@ -369,7 +369,7 @@ describe('R-WS-2: exhausted quota (owner decision 2026-11-24)', () => {
     const probe = new StreamProbe(ws, {
       raw: false,
       params: {},
-      config: { reconnectOnQuotaExhausted: false },
+      config: { quotaReconnect: false },
     }).start();
     await waitFor(() => probe.done, 'terminal');
     expect((probe.terminal as FinlightApiError).status).toBe(403);
@@ -391,5 +391,34 @@ describe('R-WS-2: exhausted quota (owner decision 2026-11-24)', () => {
     expect((probe.terminal as Error).name).toBe('PreemptedError');
     expect(probe.scheduled).toHaveLength(0);
     await probe.stop();
+  });
+});
+
+describe('searchFailedThreshold', () => {
+  test('is configurable', async () => {
+    const probe = new StreamProbe(ws, {
+      raw: false,
+      params: {},
+      config: { searchFailedThreshold: 2 },
+    }).start();
+    const failed = {
+      event: 'connection.error',
+      payloadVersion: 3,
+      data: { code: 'SEARCH_FAILED', message: 'x' },
+    };
+    try {
+      for (let n = 1; n <= 2; n++) {
+        const dial = await ws.nextDial();
+        await dial.conn!.next();
+        const before = probe.scheduled.length;
+        dial.conn!.send(failed);
+        await waitFor(() => probe.scheduled.length > before, 'reconnect');
+        expect(probe.scheduled.at(-1)?.reason).toBe('search_failed');
+        expect(probe.errors.length).toBe(n === 2 ? 1 : 0);
+        await probe.advance(probe.scheduled.at(-1)!.delayMs);
+      }
+    } finally {
+      await probe.stop();
+    }
   });
 });

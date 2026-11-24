@@ -1,5 +1,5 @@
 // Lookups: an article by id or link, companies, and the source catalog.
-import { contentPresent, isFinlightApiError } from 'finlight-client';
+import { NotFoundError, cacheInfo, contentPresent } from 'finlight-client';
 import { createClient } from './client';
 
 export async function main(link = 'https://www.reuters.com/markets/example'): Promise<void> {
@@ -14,14 +14,14 @@ export async function main(link = 'https://www.reuters.com/markets/example'): Pr
     console.log(`same article: ${again.link === article.link}`);
   } catch (err) {
     // A 404 is an error, not an empty result. Articles from before the id rollout are reachable by link only.
-    if (isFinlightApiError(err) && err.apiKind === 'not_found') console.log('not found');
+    if (err instanceof NotFoundError) console.log('not found');
     else throw err;
   }
 
   const [company] = await client.companies.search({ q: 'NVDA', mic: 'XNAS' });
   if (company) {
     const record = await client.companies.get(company.companyId);
-    console.log(record.name, record.primaryListing?.ticker, record.sector);
+    console.log(record.name, record.primaryListing?.ticker, record.sector, cacheInfo(record)?.etag);
   }
   const sources = await client.sources.list();
   console.log(`${sources.length} sources, first: ${sources[0]?.domain}`);

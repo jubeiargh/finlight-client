@@ -38,8 +38,8 @@ export class WrongPayloadVersion {
   /** `payloadVersion` exactly as received; `undefined` when the key was missing. */
   readonly payloadVersion: unknown;
   readonly payloadVersionPresent: boolean;
-  /** The parsed JSON body. */
-  readonly json: Record<string, unknown>;
+  /** The parsed JSON body. Keep it if you need the data. */
+  readonly raw: Record<string, unknown>;
   /** The article link, when it can be read. */
   readonly link: string | null;
 
@@ -47,7 +47,7 @@ export class WrongPayloadVersion {
     this.detectedVersion = 2;
     this.payloadVersionPresent = Object.prototype.hasOwnProperty.call(json, 'payloadVersion');
     this.payloadVersion = json.payloadVersion;
-    this.json = json;
+    this.raw = json;
     const data = isObject(json.data) ? json.data : undefined;
     this.link = typeof json.link === 'string' ? json.link : typeof data?.link === 'string' ? data.link : null;
     attachRaw(this, json);
@@ -204,6 +204,30 @@ function decodeEnvelope(json: Record<string, unknown>): WebhookEvent {
   return attachRaw(event, json);
 }
 
+/** Parses a verified body: payload version first, then the envelope. */
+function readEvent(body: Buffer): WebhookEvent | WrongPayloadVersion {
+  let json: unknown;
+  try {
+    json = JSON.parse(body.toString('utf8'));
+  } catch (err) {
+    throw new FinlightDecodeError('the verified webhook body is not JSON', null, undefined, err);
+  }
+  if (!isObject(json))
+    throw new FinlightDecodeError('the verified webhook body is not a JSON object', null, json);
+  const version = json.payloadVersion;
+  if (!(typeof version === 'number' && version === 3)) return new WrongPayloadVersion(json);
+  try {
+    return decodeEnvelope(json);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new FinlightDecodeError(
+      `could not decode the webhook: ${message}`,
+      err instanceof DecodeFailure ? err.path : null,
+      json,
+    );
+  }
+}
+
 /**
  * Verifies and reads incoming finlight webhooks. Always pass the raw body exactly as
  * received; never re-serialize parsed JSON.
@@ -230,27 +254,23 @@ export const Webhooks = {
     const signature = singleHeader(headers, SIGNATURE_HEADER, 'X-Webhook-Signature');
     const timestamp = singleHeader(headers, TIMESTAMP_HEADER, 'X-Webhook-Timestamp');
     verifyBytes(body, signature, timestamp, secret, options);
+    return readEvent(body);
+  },
 
-    let json: unknown;
-    try {
-      json = JSON.parse(body.toString('utf8'));
-    } catch (err) {
-      throw new FinlightDecodeError('the verified webhook body is not JSON', null, undefined, err);
-    }
-    if (!isObject(json))
-      throw new FinlightDecodeError('the verified webhook body is not a JSON object', null, json);
-    const version = json.payloadVersion;
-    if (!(typeof version === 'number' && version === 3)) return new WrongPayloadVersion(json);
-    try {
-      return decodeEnvelope(json);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      throw new FinlightDecodeError(
-        `could not decode the webhook: ${message}`,
-        err instanceof DecodeFailure ? err.path : null,
-        json,
-      );
-    }
+  /**
+   * Same as `constructEvent`, with the two header values passed directly
+   * (`X-Webhook-Signature`, `X-Webhook-Timestamp`).
+   */
+  constructEventFromValues(
+    rawBody: string | Uint8Array,
+    signature: string | null | undefined,
+    timestamp: string | null | undefined,
+    secret: string,
+    options?: WebhookVerifyOptions,
+  ): WebhookEvent | WrongPayloadVersion {
+    const body = toBytes(rawBody);
+    verifyBytes(body, signature ?? null, timestamp ?? null, secret, options);
+    return readEvent(body);
   },
 
   /**

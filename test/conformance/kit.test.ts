@@ -17,6 +17,6 @@ describe('contract kit', () => {
       encoding: 'utf8',
     });
     expect(out).toMatch(/case-table: ok/);
-    expect(kitCases().length).toBeGreaterThanOrEqual(102);
+    expect(kitCases().length).toBeGreaterThanOrEqual(105);
   });
 });

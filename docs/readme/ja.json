@@ -1,12 +1,11 @@
 {
-  "title": "finlight クライアント（TypeScript / Node.js）",
-  "breakingLabel": "互換性のない変更：",
-  "breaking": "4.x は finlight API v3 のみに対応します（REST `/v3`、WebSocket `payloadVersion` 3、v3 Webhook）。3.x のコードとは互換性がありません。アップグレードの前に[移行の説明](#migration)と[変更履歴](CHANGELOG.md)をお読みください。API v2 を使い続ける場合は `finlight-client@^3` に固定してください。",
-  "translationNote": "*この文書は英語版 README の翻訳です。内容が異なる場合は英語版が優先されます。*",
+  "title": "finlight クライアント（TypeScript）",
+  "breaking": "4.x は finlight API v3 のみに対応し（REST `/v3`、WebSocket `payloadVersion` 3、v3 Webhook）、3.x のコードは動きません。まず [3.x からの移行](#migration)と[変更履歴](CHANGELOG.md)をお読みください。API v2 を使い続ける場合は `finlight-client@^3` に固定してください。",
+  "translationNote": "*この文書は英語版 README の翻訳で、英語版に合わせて順次更新されます。内容が異なる場合は英語版が優先されます。*",
   "intro": "[finlight.me](https://finlight.me) 用の型付きクライアントです。金融ニュースの検索、記事・企業・ソースの参照、WebSocket による記事のライブ受信、Webhook の検証ができます。",
   "h_versions": "バージョン",
-  "v_sdk": "SDK メジャー",
-  "v_api": "finlight API",
+  "v_sdk": "SDK バージョン",
+  "v_api": "API バージョン",
   "v_status": "状態",
   "v_current": "最新",
   "v_old": "今後のリリースなし",
@@ -15,10 +14,9 @@
   "req_node": "SDK は組み込みの `fetch` を使います",
   "req_ts": "TypeScript を使う場合のみ",
   "req_ws": "SDK と一緒にインストールされます",
-  "h_install": "インストール",
   "h_quickstart": "クイックスタート",
   "quickstartNote": "SDK は指定されたパラメータだけを送信し、既定値を追加しません。`limit`（20）、`languages`（`['en']`）、期間はサーバーが決めます。SDK が知らないパラメータ名は、リクエストの前に `FinlightValidationError` になります。サーバーはそれを黙って無視し、しかも呼び出しとして数えるためです。",
-  "h_search": "検索",
+  "h_search": "記事の検索",
   "searchIntro": "`articles.search` は 1 ページを返します。`articles.searchAll` はカーソルを自動でたどります。",
   "searchNotes": [
     "- `searchAll` は呼び出し時にリクエストボディを固定します。以降のページでは `cursor` だけが変わるため、カーソルは有効なままです。",
@@ -27,12 +25,13 @@
     "- `from` と `to` は `Date`（ミリ秒付き UTC で送信）または文字列（そのまま送信）を受け取り、`orderBy` のタイムスタンプに適用されます。",
     "- デコードできないエントリはスキップされ、ログに記録され、`page.skipped` に入ります。ページの残りはそのまま使えます。"
   ],
-  "h_lookups": "参照",
+  "h_lookups": "記事・企業・ソースの参照",
   "lookupNotes": [
-    "- 404 は空の結果ではなく、`apiKind: 'not_found'` の `FinlightApiError` です。",
+    "- 404 は空の結果ではなく `NotFoundError`（`apiKind: 'not_found'`）です。",
     "- id 導入前に登録された記事は id で参照できません。`getByLink` を使ってください。",
-    "- 企業のエンドポイントには `entityAccess` の権限が必要です。ない場合は 403 になります。",
-    "- `companies.get` は ETag を保持して再検証します。304 のときはキャッシュしたレコードを返します。`cacheInfo(record)` で ETag を確認できます。"
+    "- 企業のエンドポイントには `entityAccess` の権限が必要です。ない場合は 403（`ForbiddenError`）になります。",
+    "- `companies.get` は ETag を保持して再検証し、304 のときはキャッシュしたレコードを返します。`cacheInfo(record)` で ETag を確認できます。独自の `ifNoneMatch` を渡した場合、304 は `null`（「変更なし」）になります。",
+    "- `companies.search`、`companies.getMany`、`sources.list` は配列を返し、デコードできなかったエントリを `skipped` フィールドに持ちます。"
   ],
   "h_presence": "キーなし、null、空リスト",
   "presenceIntro": "一部のキーはプランと `include` に依存します。キーがないこと、`null`、`[]` は意味が異なり、SDK はこれらを区別します。",
@@ -44,7 +43,7 @@
     "- タイムスタンプは送られたままの文字列です。`toDate()` が厳密に解析します。",
     "- 新しいサーバーからの未知のキーはオブジェクトに残ります。`rawJson(value)` は受信した JSON を返します。"
   ],
-  "h_streams": "ライブストリーム",
+  "h_streams": "リアルタイムストリーム",
   "streamsIntro": "`client.stream()` はエンリッチ済みの記事を、`client.rawStream()` はエンリッチ前の記事の骨格を受信します。どちらも最初の反復で接続します。SDK は 25 秒ごとに ping を送り、60 秒 pong がなければ再接続し、115 分後に接続を更新し、重複を取り除きます。",
   "streamsLimits": [
     "知っておくべきこと：",
@@ -57,7 +56,7 @@
     "- SDK はデータを自動で補完しません。`onReconnect` が `lastSeenAt` を渡すので、REST で欠けた分を取得できます。",
     "- ループを抜ける、`stream.close()` を呼ぶ、または abort シグナルで、ソケットが閉じられすべてのタイマーが止まります。",
     "- キーの拒否、WebSocket を含まないプラン、無効な購読、理由が `connection_limit` のプリエンプション（`PreemptedError`）では、ストリームはエラーで終わります。その他の問題は `onError` に渡され、ストリームは動き続けます。",
-    "- **WebSocket クォータの枯渇。** 期間のクォータを使い切ると（接続の拒否、または理由が `quota_exceeded` のプリエンプション）、ストリームは終わらず、クォータが再び許すまで 1 時間ごとに再試行します。各試行は警告としてログに記録され、`onQuotaWait` に通知されます。`reconnectOnQuotaExhausted: false` にするとエラーでストリームを終えます。間隔は `quotaRetryIntervalMs` で変更できます。REST の呼び出しは待ちません。月間の 429 はすぐに失敗します。",
+    "- **WebSocket クォータの枯渇。** 期間のクォータを使い切ると（接続の拒否、または理由が `quota_exceeded` のプリエンプション）、ストリームは終わらず、クォータが再び許すまで 1 時間ごとに再試行します。各試行は警告としてログに記録され、`onQuotaWait` に通知されます。`quotaReconnect: false` にするとエラーでストリームを終えます。間隔は `quotaReconnectIntervalMs` で変更できます。REST の呼び出しは待ちません。月間の 429 はすぐに失敗します。",
     "- `rawStream` には `include` もエンリッチ用のフィルタもありません。"
   ],
   "h_webhooks": "Webhook",
@@ -79,7 +78,7 @@
     "- SDK は Webhook を管理しません。作成と変更は finlight のダッシュボードで行ってください。"
   ],
   "h_errors": "エラーと再試行",
-  "errorsNotes": "SDK のエラーはすべて `FinlightError` を継承し、`kind` フィールド（`api`、`validation`、`network`、`timeout`、`decode`、`webhook_verification`、`preempted`）を持ちます。`FinlightApiError` には `status`、`code`、`title`、`detail`、`requestId`、`errors[]`、`apiKind` があります。論理的な呼び出しごとに専用の `X-Request-Id` を送り、再試行でも同じ値を使います。再試行のルール：",
+  "errorsNotes": "SDK のエラーはすべて `FinlightError` を継承し、`kind` フィールドを持ちます。API エラーには `status`、`code`、`title`、`detail`、`requestId`、`errors`（`FieldIssue[]`）、`apiKind`、`raw`（受信した本文。`rawJson(err)` は解析済みの JSON を返します）があります。論理的な呼び出しごとに専用の `X-Request-Id` を送り、再試行でも同じ値を使います。",
   "e_case": "応答",
   "e_retry": "再試行",
   "e_never": "しない",
@@ -98,9 +97,9 @@
   "cfg_totalTimeoutMs": "任意。再試行と待機を含む呼び出し全体の上限。",
   "cfg_maxRetries": "5xx、ネットワークエラー、タイムアウトの再試行回数。",
   "cfg_retryOnBurst": "429 バースト応答に対して `'once'` または `'off'`。",
-  "cfg_burstWaitMs": "バースト再試行の前の待ち時間。最低 10000。",
+  "cfg_burstWaitMs": "429 に `Retry-After` がない場合のバースト再試行前の待ち時間。",
   "cfg_maxPages": "`searchAll` のページ数の上限。",
-  "cfg_quota": "WebSocket クォータ枯渇時のストリームの動作：1 時間ごとに再試行（`false` ならストリームを終了）。",
+  "cfg_quota": "ストリームのみ：WebSocket クォータを使い切ると 1 時間ごとに再試行（`false` ならエラーでストリームを終了）。REST は新しいクォータを待ちません。",
   "cfg_liveness": "ストリームの ping、pong ウォッチドッグ、接続の更新。",
   "cfg_transport": "独自の `fetch`（REST）と HTTP エージェント（WebSocket）。例えばプロキシ用です。その場合はそれら自身のタイムアウトが適用されます。独自に再試行しないようにしてください。",
   "cfg_logger": "`debug`/`info`/`warn`/`error` を持つ任意のロガー。",
@@ -118,13 +117,28 @@
   "mig_rawWs": "raw WebSocket クライアント",
   "mig_logLevel": "レベルは自分の `logger` で設定",
   "webhookSwitch": [
-    "Webhook を v3 に切り替える手順：",
+    "Webhook を v3 に切り替える 4 つの手順：",
     "",
-    "1. 新しい SDK をデプロイします。`WrongPayloadVersion` には 2xx を返し、データが必要なら `json` を保存します。",
-    "2. finlight のダッシュボードで Webhook を `payloadVersion` 3 に切り替えます。",
-    "3. 約 2 時間待ちます。すでにキューに入っている再試行は古い形式で届きます。"
+    "1. 新しい SDK をデプロイします。",
+    "2. `WrongPayloadVersion` には 2xx を返し、データが必要なら `raw` の JSON を保存します。",
+    "3. finlight のダッシュボードで Webhook を `payloadVersion` 3 に切り替えます。",
+    "4. 約 2 時間待ちます。すでにキューに入っている再試行は古い形式で届きます。"
   ],
   "h_logging": "ログ",
   "loggingNotes": "SDK は既定では何も出力しません。`NODE_DEBUG=finlight` でデバッグ出力が表示されます。または `logger: console`（あるいは pino、winston）を渡してください。API キー、Webhook シークレット、署名、本文全体をログに出すことはなく、プロセスハンドラーも登録しません。",
-  "h_license": "ライセンス"
+  "h_license": "ライセンス",
+  "h_installation": "インストール",
+  "h_development": "開発",
+  "versionsIndependent": "SDK と API のバージョンは独立しています。新しい API フィールドは互換性のある 4.x リリースで追加されます。API v3 に対応する SDK：TypeScript 4.x、Python 3.x、PHP 2.x、Go `/v2`、.NET 2.x、Java 1.x、Ruby 1.x、Rust 0.2。",
+  "retryIntro": "再試行のルール：",
+  "cfg_retryDelays": "再試行間のバックオフ：最初と最長の待ち時間（ゆらぎ付き）。",
+  "cfg_maxResponseBytes": "REST 応答本文の最大サイズ。",
+  "cfg_companyCacheSize": "`companies.get` の ETag キャッシュの件数。0 で無効。",
+  "cfg_reconnect": "ストリーム再接続のバックオフ：最初と最長の待ち時間。",
+  "cfg_longBackoff": "「接続数超過」と 429 による接続拒否の後の待ち時間。",
+  "cfg_searchFailedThreshold": "`SEARCH_FAILED` がこの回数連続すると `onError` にエラーを渡します。",
+  "cfg_dedupe": "ストリームごとの重複フィルタの件数。",
+  "cfg_maxMessageBytes": "受信するストリームメッセージの最大サイズ。",
+  "cfg_connectTimeout": "WebSocket ハンドシェイクのタイムアウト。",
+  "developmentNotes": "契約キットは `conformance/`（`CONTRACT_VERSION`、sha256 の `MANIFEST`）にあり、パッケージには含まれません。キットの各ケースは個別の jest テストとして実行され、`test/conformance/CASES.md` がケースとテストを対応付けます。ライブテストは dev に対してのみ、3 つの変数がすべて設定されたときに実行され、本番のホストは拒否されます。"
 }

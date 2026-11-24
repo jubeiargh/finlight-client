@@ -2,11 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { sleep } from './clock';
 import type { ResolvedConfig } from './config';
 import {
+  createApiError,
   FinlightApiError,
   FinlightDecodeError,
   FinlightNetworkError,
   FinlightTimeoutError,
-  type ApiFieldError,
+  RateLimitedError,
+  type FieldIssue,
   type RateLimitType,
 } from './errors';
 import { isObject } from './internal/json';
@@ -44,8 +46,8 @@ const BURST_MARKER = 'Exceeded rate limit';
  */
 export function classifyRateLimit(body: unknown): RateLimitType {
   if (isObject(body)) {
-    const limitType = body.limitType;
-    if (limitType === 'monthly' || limitType === 'burst') return limitType;
+    // A value this SDK does not know is kept as sent (and never retried).
+    if (typeof body.limitType === 'string' && body.limitType.length > 0) return body.limitType;
     const detail =
       typeof body.detail === 'string' ? body.detail : typeof body.message === 'string' ? body.message : '';
     if (detail.includes(MONTHLY_MARKER)) return 'monthly';
@@ -68,10 +70,10 @@ function stringOrNull(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-function fieldErrors(value: unknown): ApiFieldError[] {
+function fieldErrors(value: unknown): FieldIssue[] {
   if (!Array.isArray(value)) return [];
   return value.filter(isObject).map((e) => {
-    const out: ApiFieldError = { field: stringOrNull(e.field), issue: stringOrNull(e.issue) };
+    const out: FieldIssue = { field: stringOrNull(e.field), issue: stringOrNull(e.issue) };
     if (Array.isArray(e.allowedValues)) {
       out.allowedValues = e.allowedValues.filter((v): v is string => typeof v === 'string');
     }
@@ -104,7 +106,7 @@ export function parseApiError(
       (typeof parsed.code === 'string' &&
         (typeof parsed.type === 'string' || typeof parsed.title === 'string')));
   if (isObject(parsed) && isProblem) {
-    return new FinlightApiError({
+    return createApiError({
       status,
       code: stringOrNull(parsed.code),
       type: stringOrNull(parsed.type),
@@ -112,8 +114,8 @@ export function parseApiError(
       detail: stringOrNull(parsed.detail),
       requestId: stringOrNull(parsed.requestId) ?? sentRequestId,
       errors: fieldErrors(parsed.errors),
-      raw: parsed,
-      channel: 'rest',
+      raw: text,
+      json: parsed,
       limitType: status === 429 ? classifyRateLimit(parsed) : null,
       retryAfterMs,
     });
@@ -126,7 +128,7 @@ export function parseApiError(
       : typeof message === 'string'
         ? [message]
         : [];
-    return new FinlightApiError({
+    return createApiError({
       status,
       code: null,
       type: null,
@@ -134,13 +136,13 @@ export function parseApiError(
       detail: messages.length ? messages.join('; ') : null,
       requestId: stringOrNull(parsed.requestId) ?? sentRequestId,
       errors: Array.isArray(message) ? messages.map((m) => ({ field: null, issue: m })) : [],
-      raw: parsed,
-      channel: 'rest',
+      raw: text,
+      json: parsed,
       limitType: status === 429 ? classifyRateLimit(parsed) : null,
       retryAfterMs,
     });
   }
-  return new FinlightApiError({
+  return createApiError({
     status,
     code: null,
     type: null,
@@ -148,8 +150,8 @@ export function parseApiError(
     detail: null,
     requestId: sentRequestId,
     errors: [],
-    raw: text,
-    channel: 'rest',
+    raw: text.length ? text : null,
+    ...(status >= 500 && status < 600 ? { apiKind: 'other' as const } : {}),
     limitType: status === 429 ? 'unknown' : null,
     retryAfterMs,
     message: `HTTP ${status}: the server answered with a non-JSON body`,
@@ -158,7 +160,8 @@ export function parseApiError(
 
 /** Retry class of an API error: never, once after the burst wait, or backoff. */
 export function retryClass(err: FinlightApiError): 'never' | 'burst' | 'backoff' {
-  if (err.status === 429) return err.limitType === 'burst' ? 'burst' : 'never';
+  if (err instanceof RateLimitedError) return err.limitType === 'burst' ? 'burst' : 'never';
+  if (err.status === 429) return 'never';
   if (err.status >= 500) return 'backoff';
   return 'never';
 }
@@ -225,11 +228,7 @@ export class HttpTransport {
 
     const waitOrGiveUp = async (ms: number, lastError: Error): Promise<void> => {
       if (deadline !== null && clock.now() + ms > deadline) {
-        throw new FinlightTimeoutError(
-          `${label}: totalTimeoutMs (${cfg.totalTimeoutMs}) reached`,
-          cfg.totalTimeoutMs as number,
-          lastError,
-        );
+        throw new FinlightTimeoutError(`${label}: totalTimeoutMs (${cfg.totalTimeoutMs}) reached`, lastError);
       }
       await sleep(clock, ms, req.signal);
     };
@@ -240,10 +239,7 @@ export class HttpTransport {
       if (deadline !== null) {
         const left = deadline - clock.now();
         if (left <= 0) {
-          throw new FinlightTimeoutError(
-            `${label}: totalTimeoutMs (${cfg.totalTimeoutMs}) reached`,
-            cfg.totalTimeoutMs as number,
-          );
+          throw new FinlightTimeoutError(`${label}: totalTimeoutMs (${cfg.totalTimeoutMs}) reached`);
         }
         attemptTimeout = Math.min(attemptTimeout, left);
       }
@@ -278,7 +274,7 @@ export class HttpTransport {
         cfg.log.debug(`${label} -> ${response.status} ${apiError.code ?? ''} (${requestId})`);
         const cls = retryClass(apiError);
         if (cls === 'burst' && cfg.retryOnBurst === 'once' && !burstRetried) {
-          burstWait = { ms: Math.max(cfg.burstWaitMs, retryAfterMs ?? 0), error: apiError };
+          burstWait = { ms: retryAfterMs ?? cfg.burstWaitMs, error: apiError };
         } else if (cls !== 'backoff' || retries >= cfg.maxRetries) {
           throw apiError;
         } else {
@@ -288,10 +284,7 @@ export class HttpTransport {
         if (req.signal?.aborted) throw req.signal.reason;
         if (err instanceof FinlightApiError || err instanceof FinlightDecodeError) throw err;
         if (err instanceof AttemptTimeout) {
-          failure = new FinlightTimeoutError(
-            `${label}: no response within ${attemptTimeout} ms`,
-            attemptTimeout,
-          );
+          failure = new FinlightTimeoutError(`${label}: no response within ${attemptTimeout} ms`);
         } else {
           const reason = err instanceof Error ? err.message : String(err);
           failure = new FinlightNetworkError(`${label}: request failed (${reason})`, err);

@@ -1,5 +1,5 @@
 import { FinlightClient } from '../../src/client';
-import type { FinlightClientConfig } from '../../src/config';
+import type { FinlightConfig } from '../../src/config';
 import { resolveConfig } from '../../src/config';
 import { HttpTransport } from '../../src/http';
 import { InstantClock } from './fake-clock';
@@ -7,7 +7,7 @@ import { KIT_API_KEY } from './kit';
 
 export function restClient(
   baseUrl: string,
-  overrides: Partial<FinlightClientConfig> = {},
+  overrides: Partial<FinlightConfig> = {},
 ): { client: FinlightClient; clock: InstantClock } {
   const clock = new InstantClock();
   const client = new FinlightClient({ apiKey: KIT_API_KEY, baseUrl, clock, ...overrides });
@@ -17,7 +17,7 @@ export function restClient(
 export function transport(
   baseUrl: string,
   apiKey = KIT_API_KEY,
-  overrides: Partial<FinlightClientConfig> = {},
+  overrides: Partial<FinlightConfig> = {},
 ): { http: HttpTransport; clock: InstantClock } {
   const clock = new InstantClock();
   const { config } = resolveConfig({ apiKey, baseUrl, clock, ...overrides });

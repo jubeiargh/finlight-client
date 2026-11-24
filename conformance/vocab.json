@@ -257,5 +257,13 @@
       }
     ],
     "open": true
+  },
+  "limitTypes": {
+    "values": [
+      "monthly",
+      "burst"
+    ],
+    "open": true,
+    "note": "problem member limitType on 429 RATE_LIMITED; burst also carries a Retry-After header (seconds)"
   }
 }

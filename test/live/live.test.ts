@@ -154,7 +154,7 @@ live('live smoke against dev', () => {
     }
     expect(admitted.length).toBe(1);
     expect(item?.kind).toBe('created');
-    expect(typeof item?.article?.id).toBe('string');
+    expect(typeof item?.data?.id).toBe('string');
     expect(stream.closed).toBe(true);
     expect(errors).toEqual([]);
   });

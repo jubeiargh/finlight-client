@@ -23,7 +23,7 @@ export function createHandler(secret: string, onEvent: (event: WebhookEvent) => 
       return;
     }
     if (result instanceof WrongPayloadVersion) {
-      // Old-format retries after switching the webhook to v3: acknowledge with 2xx, keep the raw JSON if needed.
+      // Old-format retries after switching the webhook to v3: acknowledge with 2xx; result.raw holds the JSON.
       res.writeHead(204).end();
       return;
     }

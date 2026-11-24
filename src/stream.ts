@@ -10,7 +10,8 @@ import {
   FinlightNetworkError,
   FinlightValidationError,
   PreemptedError,
-  type ApiFieldError,
+  createApiError,
+  type FieldIssue,
 } from './errors';
 import { decodeFrame, type DecodedFrame } from './frames';
 import { canonicalJson, isObject } from './internal/json';
@@ -29,7 +30,8 @@ export type ReconnectReason =
   | 'rotation'
   | 'watchdog'
   | 'closed'
-  | 'server_error'
+  | 'handshake_failed'
+  | 'search_failed'
   | 'dial_failed'
   | 'dial_refused'
   | 'connection_limit'
@@ -60,7 +62,7 @@ export interface StreamOptions {
   /** Called for problems that do not end the stream (log-only errors, repeated failures). */
   onError?: (error: FinlightError) => void;
   /**
-   * Called each time the stream waits for the WebSocket quota (see `reconnectOnQuotaExhausted`):
+   * Called each time the stream waits for the WebSocket quota (see `quotaReconnect`):
    * after a `quota_exceeded` preemption and after every dial refused for the quota.
    */
   onQuotaWait?: (info: QuotaWaitInfo) => void;
@@ -81,7 +83,7 @@ export interface QuotaWaitInfo {
  * abort signal closes the socket with 1000 and stops every timer.
  * Terminal problems (refused key, plan without WebSockets, validation, a `connection_limit`
  * preemption) end the iteration with a typed error. An exhausted quota waits and retries
- * hourly unless `reconnectOnQuotaExhausted` is `false`.
+ * hourly unless `quotaReconnect` is `false`.
  */
 export interface FinlightStream extends AsyncIterable<StreamEvent> {
   close(): Promise<void>;
@@ -116,7 +118,7 @@ interface Conn {
   ws: WebSocket;
   opened: boolean;
   timers: { ping: unknown; watchdog: unknown; rotation: unknown };
-  refusal: { status: number; message: string | null } | null;
+  refusal: { status: number; message: string | null; body: string | null } | null;
   planned: Planned | null;
   closed: Promise<void>;
 }
@@ -124,7 +126,6 @@ interface Conn {
 const NO_WEBSOCKETS_PREFIX = 'Your subscription does not include WebSockets';
 const QUOTA_PREFIX = 'WebSocket quota exceeded';
 const TOO_MANY_PREFIX = 'Too many concurrent connections';
-const SEARCH_FAILED_SURFACE_AFTER = 5;
 
 function refusalMessage(body: string): string | null {
   if (!body) return null;
@@ -140,17 +141,29 @@ function refusalMessage(body: string): string | null {
   return null;
 }
 
-function dialError(status: number, message: string | null, detail?: string): FinlightApiError {
-  return new FinlightApiError({
+function dialError(
+  status: number,
+  message: string | null,
+  body: string | null,
+  detail?: string,
+): FinlightApiError {
+  let json: unknown;
+  try {
+    json = body ? JSON.parse(body) : undefined;
+  } catch {
+    json = undefined;
+  }
+  // A refused dial has no problem code: the kind comes from the status.
+  return createApiError({
     status,
-    code: status === 401 ? 'UNAUTHORIZED' : status === 403 ? 'FORBIDDEN' : null,
+    code: null,
     type: null,
     title: 'WebSocket connection refused',
     detail: detail ?? message,
     requestId: null,
     errors: [],
-    raw: message === null ? null : { message },
-    channel: 'websocket',
+    raw: body || null,
+    ...(json !== undefined ? { json } : {}),
     limitType: status === 429 ? 'unknown' : null,
     retryAfterMs: null,
     message: `WebSocket connection refused with HTTP ${status}${message ? `: ${message}` : ''}`,
@@ -158,7 +171,7 @@ function dialError(status: number, message: string | null, detail?: string): Fin
 }
 
 function streamError(code: string | null, message: string | null, details: unknown): FinlightApiError {
-  const errors: ApiFieldError[] = [];
+  const errors: FieldIssue[] = [];
   if (Array.isArray(details)) {
     for (const d of details) {
       if (!isObject(d)) continue;
@@ -173,7 +186,8 @@ function streamError(code: string | null, message: string | null, details: unkno
       });
     }
   }
-  return new FinlightApiError({
+  const data = { code, message, details };
+  return createApiError({
     status: 0,
     code,
     type: null,
@@ -181,10 +195,9 @@ function streamError(code: string | null, message: string | null, details: unkno
     detail: message,
     requestId: null,
     errors,
-    raw: { code, message, details },
-    channel: 'websocket',
-    limitType: null,
-    retryAfterMs: null,
+    raw: JSON.stringify(data),
+    json: data,
+    ...(code === null ? { apiKind: 'other' as const } : {}),
     message: `stream error ${code ?? '(no code)'}: ${message ?? ''}`.trim(),
   });
 }
@@ -397,14 +410,17 @@ export class StreamSession implements FinlightStream {
   }
 
   private onRefusal(conn: Conn, _req: ClientRequest, res: IncomingMessage): void {
-    conn.refusal = { status: res.statusCode ?? 0, message: null };
+    conn.refusal = { status: res.statusCode ?? 0, message: null, body: null };
     const chunks: Buffer[] = [];
     let size = 0;
     let done = false;
     const finishRead = (): void => {
       if (done) return;
       done = true;
-      if (conn.refusal) conn.refusal.message = refusalMessage(Buffer.concat(chunks).toString('utf8'));
+      if (conn.refusal) {
+        conn.refusal.body = Buffer.concat(chunks).toString('utf8');
+        conn.refusal.message = refusalMessage(conn.refusal.body);
+      }
       conn.ws.terminate();
     };
     res.on('data', (chunk: Buffer) => {
@@ -548,8 +564,7 @@ export class StreamSession implements FinlightStream {
         const item: StreamEvent = Object.freeze({
           kind: 'other' as const,
           event: frame.event,
-          article: null,
-          frame: json as Record<string, unknown>,
+          data: null,
         });
         this.push(attachRaw(item, json));
         return;
@@ -568,17 +583,17 @@ export class StreamSession implements FinlightStream {
         return;
       case 'HANDSHAKE_FAILED':
         this.#cfg.log.warn('stream handshake failed; reconnecting');
-        this.drop(conn, { kind: 'reconnect', reason: 'server_error', delay: 'backoff' }, true);
+        this.drop(conn, { kind: 'reconnect', reason: 'handshake_failed', delay: 'backoff' }, true);
         return;
       case 'SEARCH_FAILED':
         this.#searchFailed += 1;
-        if (this.#searchFailed >= SEARCH_FAILED_SURFACE_AFTER) {
+        if (this.#searchFailed >= this.#cfg.searchFailedThreshold) {
           this.#searchFailed = 0;
           this.report(error);
         } else {
           this.#cfg.log.warn('the initial stream search failed; reconnecting');
         }
-        this.drop(conn, { kind: 'reconnect', reason: 'server_error', delay: 'backoff' }, true);
+        this.drop(conn, { kind: 'reconnect', reason: 'search_failed', delay: 'backoff' }, true);
         return;
       default:
         // PING_ON_DEFAULT_ROUTE, INTERNAL_ERROR, unknown codes and v2-form errors: report only.
@@ -621,8 +636,7 @@ export class StreamSession implements FinlightStream {
     const item: StreamEvent = Object.freeze({
       kind: frame.kind,
       event: frame.event,
-      article,
-      frame: json as Record<string, unknown>,
+      data: article,
     });
     this.push(attachRaw(item, json));
   }
@@ -657,40 +671,41 @@ export class StreamSession implements FinlightStream {
   private classifyClose(conn: Conn, code: number): Planned {
     const refusal = conn.refusal;
     if (refusal) {
-      const { status, message } = refusal;
+      const { status, message, body } = refusal;
       const text = message ?? '';
-      if (status === 401) return { kind: 'terminal', error: dialError(status, message) };
+      if (status === 401) return { kind: 'terminal', error: dialError(status, message, body) };
       if (status === 403) {
         if (text.startsWith(NO_WEBSOCKETS_PREFIX)) {
-          return { kind: 'terminal', error: dialError(status, message) };
+          return { kind: 'terminal', error: dialError(status, message, body) };
         }
-        if (text.startsWith(QUOTA_PREFIX)) return this.quotaPlan(dialError(status, message));
+        if (text.startsWith(QUOTA_PREFIX)) return this.quotaPlan(dialError(status, message, body));
         if (text.startsWith(TOO_MANY_PREFIX)) {
           this.report(
             dialError(
               status,
               message,
+              body,
               `${text} Your connection limit is shared by enriched, raw and older SDK streams; ` +
                 'the SDK retries after a long wait. Pass { takeover: true } to replace your stalest connection.',
             ),
           );
           return { kind: 'reconnect', reason: 'connection_limit', delay: 'long' };
         }
-        this.report(dialError(status, message));
+        this.report(dialError(status, message, body));
         return { kind: 'reconnect', reason: 'dial_refused', delay: 'long' };
       }
       if (status === 429) {
-        this.report(dialError(status, message));
+        this.report(dialError(status, message, body));
         return { kind: 'reconnect', reason: 'rate_limited', delay: 'long' };
       }
       if (status >= 500) return { kind: 'reconnect', reason: 'dial_refused', delay: 'backoff' };
-      this.report(dialError(status, message));
+      this.report(dialError(status, message, body));
       return { kind: 'reconnect', reason: 'dial_refused', delay: 'backoff' };
     }
     if (code === 1008) {
       return {
         kind: 'terminal',
-        error: new FinlightApiError({
+        error: createApiError({
           status: 1008,
           code: null,
           type: null,
@@ -699,9 +714,7 @@ export class StreamSession implements FinlightStream {
           requestId: null,
           errors: [],
           raw: null,
-          channel: 'websocket',
-          limitType: null,
-          retryAfterMs: null,
+          apiKind: 'other',
         }),
       };
     }
@@ -714,7 +727,7 @@ export class StreamSession implements FinlightStream {
 
   /** Exhausted quota: wait and retry hourly (default), or end the stream when switched off. */
   private quotaPlan(error: FinlightError): Planned {
-    if (!this.#cfg.reconnectOnQuotaExhausted) return { kind: 'terminal', error };
+    if (!this.#cfg.quotaReconnect) return { kind: 'terminal', error };
     this.#pendingQuotaError = error;
     return { kind: 'reconnect', reason: 'quota_exceeded', delay: 'quota' };
   }
@@ -731,9 +744,9 @@ export class StreamSession implements FinlightStream {
     if (kind === 'long')
       delayMs = this.#cfg.longBackoffMs + Math.round(Math.random() * 0.2 * this.#cfg.longBackoffMs);
     if (kind === 'quota') {
-      delayMs = this.#cfg.quotaRetryIntervalMs;
+      delayMs = this.#cfg.quotaReconnectIntervalMs;
       this.#quotaWaits += 1;
-      const error = this.#pendingQuotaError ?? dialError(403, QUOTA_PREFIX);
+      const error = this.#pendingQuotaError ?? dialError(403, QUOTA_PREFIX, null);
       this.#pendingQuotaError = null;
       this.#cfg.log.warn(
         `WebSocket quota exhausted (${error.message}); attempt ${this.#quotaWaits}, next try in ${delayMs} ms`,

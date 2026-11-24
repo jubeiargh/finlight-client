@@ -7,7 +7,6 @@ import type {
   ArticlePage,
   ArticleSource,
   Company,
-  CompanyListing,
   CompanyRecord,
   EventTag,
   Listing,
@@ -144,7 +143,7 @@ function nullableListing(obj: JsonObject, key: string, path: string): Listing | 
   return decodeListing(v, `${path}.${key}`);
 }
 
-function decodeCompanyListing(value: unknown, path: string): CompanyListing {
+function decodeCompanyListing(value: unknown, path: string): Listing {
   const obj = requireObject(value, path);
   return { ...decodeListing(obj, path), active: nullableBoolean(obj, 'active', path) };
 }

@@ -153,7 +153,7 @@ describe('R-HOOK-2: payload version', () => {
       expect(w.payloadVersionPresent).toBe(true);
       expect(w.link).toBe(ENVELOPE.data.link);
       expect(w).not.toBeInstanceOf(Error);
-      expect(rawJson(w)).toEqual(w.json);
+      expect(rawJson(w)).toEqual(w.raw);
     },
   );
 

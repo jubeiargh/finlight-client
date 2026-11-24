@@ -20,6 +20,7 @@ import {
   problemTypeUrl,
 } from '../../src/vocab';
 import { decodeArticle, decodeArticlePage, envelopeField } from '../../src/decode';
+import { RATE_LIMIT_TYPES, RateLimitedError } from '../../src/errors';
 import {
   companiesPresent,
   contentPresent,
@@ -108,6 +109,7 @@ describe('V: vocabulary', () => {
     expect([...PREEMPT_REASONS]).toEqual(vocab.websocket.preemptReasons.values);
     expect([...WEBHOOK_EVENT_NAMES]).toEqual(vocab.webhook.events.values);
     expect([...PROBLEM_CODES]).toEqual(vocab.problemCodes.values.map((v: any) => v.code));
+    expect([...RATE_LIMIT_TYPES]).toEqual(vocab.limitTypes.values);
     for (const { code, type } of vocab.problemCodes.values) expect(problemTypeUrl(code)).toBe(type);
     // Response enums stay open: an unknown value is kept as is.
     const article = decodeArticle({
@@ -167,9 +169,11 @@ describe('D: decode', () => {
   });
 
   test(caseName('D-07'), () => {
-    const { article } = decodeCase('fixtures/decode/legacy-values.json');
+    const { fixture, article } = decodeCase('fixtures/decode/legacy-values.json');
     expect(article.publishedAt).toBe('1970-01-01T00:00:00.000Z');
-    expect(article.summary).toBe('');
+    // rc.2+: the server sends null for an empty summary.
+    expect(article.summary).toBe(fixture.wire.summary);
+    expect(article.summary).toBeNull();
     expect(article.firstSeenAt).toBeNull();
     expect(article.revisedAt).toBeNull();
     expect(article.availableAt).toBeNull();
@@ -181,6 +185,14 @@ describe('D: decode', () => {
     expect(article.events).toEqual([]);
     expect(article.countries).toEqual([]);
     expect(article.categories).toEqual([]);
+  });
+
+  test(caseName('D-11'), () => {
+    const { fixture, article } = decodeCase('fixtures/decode/blank-text.json');
+    expect(article.summary).toBeNull();
+    expect(article.content).toBeNull();
+    expect(contentPresent(article)).toBe(true);
+    expect(article.title).toBe(fixture.wire.title);
   });
 
   test(caseName('D-08'), () => {
@@ -298,7 +310,7 @@ describe('F: forward compatibility', () => {
 
   test(caseName('F-04'), () => {
     const fixture = loadFixture('fixtures/forward-compat/unknown-events-and-codes.json');
-    const [hook, problem] = fixture.items;
+    const [hook, problem, limit] = fixture.items;
     const body = JSON.stringify(hook.wire);
     const ts = '2026-11-23T21:04:05.123Z';
     const event = Webhooks.constructEvent(body, sign(body, ts), secret, { now: () => Date.parse(ts) });
@@ -317,5 +329,18 @@ describe('F: forward compatibility', () => {
     expect(err.detail).toBe(problem.wire.detail);
     expect(err.requestId).toBe('req_synthetic');
     expect(retryClass(err)).toBe('never');
+    expect(err.constructor.name).toBe('FinlightApiError');
+
+    const rl = parseApiError(
+      limit.status,
+      limit.headers['content-type'],
+      JSON.stringify(limit.wire),
+      'r',
+      null,
+    );
+    expect(rl).toBeInstanceOf(RateLimitedError);
+    expect(rl.apiKind).toBe('rate_limited');
+    expect((rl as RateLimitedError).limitType).toBe('daily');
+    expect(retryClass(rl)).toBe('never');
   });
 });

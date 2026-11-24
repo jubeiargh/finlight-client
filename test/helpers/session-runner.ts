@@ -1,11 +1,21 @@
 import { FinlightClient } from '../../src/client';
-import type { FinlightClientConfig } from '../../src/config';
-import { FinlightApiError, PreemptedError, type FinlightError } from '../../src/errors';
+import type { FinlightConfig } from '../../src/config';
+import {
+  FinlightApiError,
+  ForbiddenError,
+  InternalServerError,
+  PreemptedError,
+  RateLimitedError,
+  UnauthorizedError,
+  ValidationFailedError,
+  type FinlightError,
+} from '../../src/errors';
 import type { StreamEvent } from '../../src/models';
 import {
   setStreamTestHooks,
   type AdmittedInfo,
   type FinlightStream,
+  type QuotaWaitInfo,
   type ReconnectInfo,
 } from '../../src/stream';
 import { FakeClock, flushIo, waitFor } from './fake-clock';
@@ -20,7 +30,7 @@ export class StreamProbe {
   readonly errors: FinlightError[] = [];
   readonly scheduled: Array<{ delayMs: number; reason: string }> = [];
   readonly duplicates: string[] = [];
-  readonly quotaWaits: Array<{ nextAttemptInMs: number; attempt: number; kind: string }> = [];
+  readonly quotaWaits: QuotaWaitInfo[] = [];
   frames = 0;
   pongs = 0;
   pingsSent = 0;
@@ -38,7 +48,7 @@ export class StreamProbe {
       params: Record<string, unknown>;
       apiKey?: string;
       nonce?: string;
-      config?: Partial<FinlightClientConfig>;
+      config?: Partial<FinlightConfig>;
       takeover?: boolean;
     },
   ) {}
@@ -55,8 +65,7 @@ export class StreamProbe {
       onAdmitted: (a: AdmittedInfo) => this.admitted.push(a),
       onReconnect: (r: ReconnectInfo) => this.reconnects.push(r),
       onError: (e: FinlightError) => this.errors.push(e),
-      onQuotaWait: (q: { nextAttemptInMs: number; attempt: number; error: FinlightError }) =>
-        this.quotaWaits.push({ nextAttemptInMs: q.nextAttemptInMs, attempt: q.attempt, kind: q.error.kind }),
+      onQuotaWait: (q: QuotaWaitInfo) => this.quotaWaits.push(q),
       ...(this.opts.takeover ? { takeover: true } : {}),
     };
     this.stream = this.opts.raw
@@ -112,12 +121,57 @@ function withoutKeys(frame: Record<string, unknown>, keys: string[]): Record<str
   return out;
 }
 
+/** Maps the kit's clientConfig (base words) onto this SDK's config keys. */
+function clientConfigFrom(input: Record<string, unknown> | undefined): Partial<FinlightConfig> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input ?? {})) {
+    // Durations are base words without unit; TS takes milliseconds with an Ms suffix.
+    out[typeof value === 'number' && !/Threshold|Size|Pages|Retries/.test(key) ? `${key}Ms` : key] = value;
+  }
+  return out as Partial<FinlightConfig>;
+}
+
+const SUBCLASS: Record<string, unknown> = {
+  validation_failed: ValidationFailedError,
+  unauthorized: UnauthorizedError,
+  forbidden: ForbiddenError,
+  rate_limited: RateLimitedError,
+  internal_error: InternalServerError,
+};
+
+function checkApiError(err: any, step: any): void {
+  expect(err).toBeInstanceOf(FinlightApiError);
+  expect(err.kind).toBe('api');
+  if (step.apiKind) {
+    expect(err.apiKind).toBe(step.apiKind);
+    if (SUBCLASS[step.apiKind]) expect(err).toBeInstanceOf(SUBCLASS[step.apiKind] as any);
+  }
+  if (step.status !== undefined) expect(err.status).toBe(step.status);
+  if (step.code !== undefined) expect(err.code).toBe(step.code);
+}
+
+function checkReported(probe: StreamProbe, index: number, r: any): void {
+  expect(r.hook).toBe('onQuotaWait');
+  const info = probe.quotaWaits[index];
+  expect(info).toBeDefined();
+  if (r.attempt !== undefined) expect(info.attempt).toBe(r.attempt);
+  if (r.error === 'PreemptedError') {
+    expect(info.error).toBeInstanceOf(PreemptedError);
+    expect((info.error as PreemptedError).reason).toBe(r.reason);
+    expect((info.error as PreemptedError).newLeaseId).toBe(r.newLeaseId);
+  } else {
+    checkApiError(info.error, r);
+  }
+  // A quota wait goes to onQuotaWait only, not to onError.
+  expect(probe.errors.some((e) => e === info.error)).toBe(false);
+}
+
 export interface SessionOptions {
   /** Keys the fixture's subscribe carries that the SDK refuses to send. */
   forbiddenKeys?: string[];
   autoPong?: boolean;
   /** Client config overrides for this session. */
-  config?: Partial<FinlightClientConfig>;
+  config?: Partial<FinlightConfig>;
   /** Extra checks after the scripted steps. */
   after?: (ctx: SessionContext) => Promise<void>;
   /** Extra checks right after the first admitted item expectation. */
@@ -154,12 +208,20 @@ export async function runSession(ws: WsMock, fixture: any, options: SessionOptio
     params,
     apiKey,
     nonce: (firstSubscribe.clientNonce as string | undefined) ?? 'c-test',
-    ...(options.config ? { config: options.config } : {}),
+    config: { ...clientConfigFrom(fixture.clientConfig), ...(options.config ?? {}) },
   }).start();
 
   let conn: ServerConn | null = null;
   let subscribedOn: ServerConn | null = null;
-  let checked = { admitted: 0, items: 0, pongs: 0, scheduled: 0, errors: 0, duplicates: 0 };
+  let checked: Checked = {
+    admitted: 0,
+    items: 0,
+    pongs: 0,
+    scheduled: 0,
+    errors: 0,
+    duplicates: 0,
+    quota: 0,
+  };
   const ctx: SessionContext = { probe, ws, subscribe, conn: () => conn };
 
   try {
@@ -232,22 +294,26 @@ export async function runSession(ws: WsMock, fixture: any, options: SessionOptio
   await waitFor(() => ws.openConnections() === 0, 'all sockets closed');
 }
 
+interface Checked {
+  admitted: number;
+  items: number;
+  pongs: number;
+  scheduled: number;
+  errors: number;
+  duplicates: number;
+  quota: number;
+  pendingRedial?: boolean;
+}
+
 async function checkExpect(
   step: any,
   probe: StreamProbe,
   ws: WsMock,
   ctx: SessionContext,
-  checked: {
-    admitted: number;
-    items: number;
-    pongs: number;
-    scheduled: number;
-    errors: number;
-    duplicates: number;
-  },
+  checked: Checked,
   nextStep: any,
-): Promise<typeof checked> {
-  const c = { ...checked };
+): Promise<Checked> {
+  const c: Checked = { ...checked };
   switch (step.outcome) {
     case 'admitted': {
       await waitFor(() => probe.admitted.length > c.admitted, 'admitted');
@@ -266,7 +332,7 @@ async function checkExpect(
       while (probe.items[c.items].kind === 'other') c.items++;
       const item = probe.items[c.items++];
       expect(item.kind).toBe(step.kind);
-      if (step.id) expect(item.article?.id).toBe(step.id);
+      if (step.id) expect(item.data?.id).toBe(step.id);
       break;
     }
     case 'duplicateDropped':
@@ -306,20 +372,28 @@ async function checkExpect(
         expect(err.kind).toBe('preempted');
         expect(err.reason).toBe(step.reason);
         expect(err.newLeaseId).toBe(step.newLeaseId);
-      } else if (step.error === 'DialError') {
-        expect(err).toBeInstanceOf(FinlightApiError);
-        expect(err.channel).toBe('websocket');
-        expect(err.status).toBe(step.status);
-      } else if (step.error === 'ValidationError') {
-        expect(err).toBeInstanceOf(FinlightApiError);
-        expect(err.code).toBe(step.code);
-        expect(err.errors.length).toBeGreaterThan(0);
-        expect(typeof err.errors[0].field).toBe('string');
-        expect(err.errors[0].constraints).toBeDefined();
+      } else if (step.error === 'FinlightApiError') {
+        checkApiError(err, step);
+        if (step.apiKind === 'validation_failed') {
+          expect(err.errors.length).toBeGreaterThan(0);
+          expect(typeof err.errors[0].field).toBe('string');
+          expect(err.errors[0].constraints).toBeDefined();
+        }
       } else {
         throw new Error(`unknown terminal error ${step.error}`);
       }
       expect(probe.scheduled.length).toBe(c.scheduled);
+      break;
+    }
+    case 'reported': {
+      await waitFor(() => probe.quotaWaits.length > c.quota, 'a report to onQuotaWait');
+      checkReported(probe, c.quota++, step);
+      // The quota wait is scheduled together with the report.
+      await waitFor(() => probe.scheduled.length > c.scheduled, 'the scheduled quota redial');
+      expect(probe.scheduled[c.scheduled].reason).toBe('quota_exceeded');
+      expect(probe.done).toBe(false);
+      c.scheduled++;
+      c.pendingRedial = true;
       break;
     }
     case 'noReconnect': {
@@ -331,8 +405,29 @@ async function checkExpect(
       break;
     }
     case 'reconnect': {
+      if (c.pendingRedial) {
+        // Already scheduled with a report; the script advanced the clock.
+        c.pendingRedial = false;
+        const last = probe.scheduled[c.scheduled - 1];
+        if (step.reason) expect(last.reason).toBe(step.reason);
+        if (nextStep?.step !== 'dial') {
+          const dial = await ws.nextDial('redial after the quota wait');
+          if (step.resubscribe) {
+            const msg = await dial.conn!.next('re-subscribe');
+            expect(withoutKeys(msg as Record<string, unknown>, ['clientNonce'])).toEqual(
+              withoutKeys(ctx.subscribe, ['clientNonce']),
+            );
+          }
+        }
+        break;
+      }
       await waitFor(() => probe.scheduled.length > c.scheduled, 'a scheduled reconnect');
       const s = probe.scheduled[c.scheduled++];
+      if (step.reported) {
+        await waitFor(() => probe.quotaWaits.length > c.quota, 'a report to onQuotaWait');
+        checkReported(probe, c.quota++, step.reported);
+      }
+      if (step.backoff === 'quota') expect(s.reason).toBe('quota_exceeded');
       expect(probe.done).toBe(false);
       if (step.backoff === 'long') expect(s.delayMs).toBeGreaterThanOrEqual(60_000);
       if (step.firstRetryMinMs) expect(s.delayMs).toBeGreaterThanOrEqual(step.firstRetryMinMs);

@@ -19,7 +19,7 @@ export async function main(maxItems = 5, signal?: AbortSignal): Promise<void> {
   try {
     for await (const item of stream) {
       if (item.kind === 'other') continue; // an event this SDK version does not know
-      console.log(`${item.kind}: ${item.article?.title}`);
+      console.log(`${item.kind}: ${item.data?.title}`);
       seen += 1;
       if (seen >= maxItems) break; // leaving the loop closes the socket
     }

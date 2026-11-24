@@ -14,11 +14,10 @@ import {
   isFinlightError,
 } from '../../src/errors';
 import { buildSearchBody, buildSubscribe } from '../../src/params';
-import { skippedEntries } from '../../src/companies';
 import { toDate } from '../../src/time';
 import { FakeClock, flushIo, waitFor } from '../helpers/fake-clock';
 import { HttpMock } from '../helpers/http-mock';
-import { restClient, transport } from '../helpers/clients';
+import { restClient } from '../helpers/clients';
 import { KIT_API_KEY, loadFixture } from '../helpers/kit';
 
 const ROOT = join(__dirname, '..', '..');
@@ -321,12 +320,13 @@ describe('R-MODELS-1 / R-MODELS-2: tolerant reader', () => {
     expect(err.path).toBe('article.link');
   });
 
-  test('broken company and source entries go to skippedEntries()', async () => {
+  test('broken company and source entries go to the list skipped field', async () => {
     mock.enqueue({ status: 200, body: { sources: [{ domain: 'a' }, { name: 'no domain' }] } });
     const { client } = restClient(mock.baseUrl);
     const sources = await client.sources.list();
     expect(sources).toHaveLength(1);
-    expect(skippedEntries(sources)).toHaveLength(1);
+    expect(sources.skipped).toHaveLength(1);
+    expect(JSON.stringify(sources)).not.toContain('skipped');
   });
 
   test('values are delivered as sent and parsed strictly on demand', () => {
@@ -372,7 +372,7 @@ describe('R-ERR-1 / R-RETRY-1: errors and retries', () => {
     },
   };
 
-  test('rc.2: limitType wins over the detail text, and Retry-After lengthens the burst wait', async () => {
+  test('limitType wins over the detail text, and the burst wait is exactly Retry-After', async () => {
     mock.enqueue(
       {
         ...burst,
@@ -426,9 +426,16 @@ describe('R-ERR-1 / R-RETRY-1: errors and retries', () => {
     expect(mock.requests).toHaveLength(1);
   });
 
-  test('the burst wait is at least 10 s even when configured lower', () => {
-    const { http } = transport(mock.baseUrl, KIT_API_KEY, { burstWaitMs: 1 });
-    expect(http.config.burstWaitMs).toBe(10_000);
+  test('without Retry-After the burst wait is burstWaitMs (10 s by default, configurable)', async () => {
+    mock.enqueue(burst, page([]));
+    const { client, clock } = restClient(mock.baseUrl);
+    await client.articles.search();
+    expect(clock.sleeps).toEqual([10_000]);
+    mock.reset();
+    mock.enqueue({ ...burst, headers: { ...burst.headers, 'retry-after': '3' } }, page([]));
+    const short = restClient(mock.baseUrl);
+    await short.client.articles.search();
+    expect(short.clock.sleeps).toEqual([3_000]);
   });
 
   test('abort during the burst wait ends at once with the caller reason; no retry', async () => {

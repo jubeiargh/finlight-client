@@ -1,5 +1,5 @@
 export { FinlightClient } from './client';
-export type { FinlightClientConfig, RetryOnBurst } from './config';
+export type { FinlightConfig, RetryOnBurst } from './config';
 export type { Clock } from './clock';
 export type { Logger } from './logger';
 export { VERSION } from './version';
@@ -12,7 +12,7 @@ export type {
   SearchAllResult,
 } from './articles';
 export type { CompaniesService, CompanyGetOptions, CacheInfo } from './companies';
-export { cacheInfo, skippedEntries } from './companies';
+export { cacheInfo } from './companies';
 export type { SourcesService } from './sources';
 
 export type { SearchParams, StreamParams, RawStreamParams, CompanySearchParams, DateInput } from './params';
@@ -24,7 +24,8 @@ export type {
   Sentiment,
   Company,
   Listing,
-  CompanyListing,
+  CompanyList,
+  SourceList,
   EventTag,
   CompanyRecord,
   Source,
@@ -57,6 +58,15 @@ export type { WebhookHeaders, WebhookVerifyOptions } from './webhooks';
 export {
   FinlightError,
   FinlightApiError,
+  ValidationFailedError,
+  CursorInvalidError,
+  CursorMismatchError,
+  UnauthorizedError,
+  ForbiddenError,
+  NotFoundError,
+  RateLimitedError,
+  InternalServerError,
+  RATE_LIMIT_TYPES,
   FinlightValidationError,
   FinlightNetworkError,
   FinlightTimeoutError,
@@ -69,7 +79,7 @@ export {
 export type {
   FinlightErrorKind,
   ApiErrorKind,
-  ApiFieldError,
+  FieldIssue,
   RateLimitType,
   WebhookVerificationReason,
 } from './errors';

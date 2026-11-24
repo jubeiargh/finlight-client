@@ -41,12 +41,44 @@ function render(lang) {
   return out;
 }
 
-const headings = (md) => md.split('\n').filter((l) => /^#{1,3} /.test(l)).length;
+const headings = (md) => outsideCode(md).length;
+// sdk-style.md section 10: README.md has exactly these headings, in this order.
+const SKELETON = [
+  '# finlight client for TypeScript',
+  '## Versions',
+  '## Requirements',
+  '## Installation',
+  '## Quick start',
+  '## Search articles',
+  '## Look up articles, companies and sources',
+  '## Absent, null and empty',
+  '## Real-time streams',
+  '## Webhooks',
+  '## Errors and retries',
+  '## Configuration',
+  '## Logging',
+  '## Data notes',
+  '## Migrating from 3.x',
+  '## Development',
+  '## License',
+];
+function outsideCode(md) {
+  let inCode = false;
+  return md.split('\n').filter((l) => {
+    if (l.startsWith('```')) inCode = !inCode;
+    return !inCode && /^#{1,3} /.test(l);
+  });
+}
 const check = process.argv.includes('--check');
 let reference = null;
 for (const lang of LANGS) {
   const md = render(lang);
   if (!/\| 4\.x \| v3 /.test(md)) problems.push(`${lang.file}: version table missing`);
+  if (!/\| SDK version \| API version \| Status \|/.test(md) && lang.code === 'en') problems.push('README.md: version table header');
+  if (!md.includes('> **Breaking release.**')) problems.push(`${lang.file}: breaking notice missing`);
+  if (lang.code === 'en' && JSON.stringify(outsideCode(md)) !== JSON.stringify(SKELETON)) {
+    problems.push(`README.md headings differ from the skeleton: ${JSON.stringify(outsideCode(md))}`);
+  }
   if (reference === null) reference = headings(md);
   else if (headings(md) !== reference) problems.push(`${lang.file}: heading structure differs from README.md`);
   const target = path.join(root, lang.file);
