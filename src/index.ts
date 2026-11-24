@@ -53,7 +53,7 @@ export {
   isWrongPayloadVersion,
   DEFAULT_WEBHOOK_TOLERANCE_MS,
 } from './webhooks';
-export type { WebhookHeaders, WebhookVerifyOptions } from './webhooks';
+export type { WebhookHeaders, WebhookVerifyOptions, WebhooksApi } from './webhooks';
 
 export {
   FinlightError,

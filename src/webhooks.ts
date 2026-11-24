@@ -232,7 +232,7 @@ function readEvent(body: Buffer): WebhookEvent | WrongPayloadVersion {
  * Verifies and reads incoming finlight webhooks. Always pass the raw body exactly as
  * received; never re-serialize parsed JSON.
  */
-export const Webhooks = {
+export interface WebhooksApi {
   /**
    * Verifies the signature (HMAC-SHA256 over `timestamp + "." + rawBody`, keyed with the
    * UTF-8 bytes of the secret), checks the timestamp tolerance, then parses the body.
@@ -241,6 +241,43 @@ export const Webhooks = {
    * in another payload version (answer it with 2xx). Throws `WebhookVerificationError`
    * when verification fails and `FinlightDecodeError` when a verified body is unreadable.
    */
+  constructEvent(
+    rawBody: string | Uint8Array,
+    headers: WebhookHeaders,
+    secret: string,
+    options?: WebhookVerifyOptions,
+  ): WebhookEvent | WrongPayloadVersion;
+
+  /**
+   * Same as `constructEvent`, with the two header values passed directly
+   * (`X-Webhook-Signature`, `X-Webhook-Timestamp`).
+   */
+  constructEventFromValues(
+    rawBody: string | Uint8Array,
+    signature: string | null | undefined,
+    timestamp: string | null | undefined,
+    secret: string,
+    options?: WebhookVerifyOptions,
+  ): WebhookEvent | WrongPayloadVersion;
+
+  /**
+   * Verifies a webhook from the two header values. Throws `WebhookVerificationError`;
+   * returns nothing on success. Use it when your framework hands you the values directly.
+   */
+  verifySignature(
+    rawBody: string | Uint8Array,
+    signature: string | null | undefined,
+    timestamp: string | null | undefined,
+    secret: string,
+    options?: WebhookVerifyOptions,
+  ): void;
+}
+
+/**
+ * Verifies and reads incoming finlight webhooks. Always pass the raw body exactly as
+ * received; never re-serialize parsed JSON.
+ */
+export const Webhooks: Readonly<WebhooksApi> = {
   constructEvent(
     rawBody: string | Uint8Array,
     headers: WebhookHeaders,
@@ -257,10 +294,6 @@ export const Webhooks = {
     return readEvent(body);
   },
 
-  /**
-   * Same as `constructEvent`, with the two header values passed directly
-   * (`X-Webhook-Signature`, `X-Webhook-Timestamp`).
-   */
   constructEventFromValues(
     rawBody: string | Uint8Array,
     signature: string | null | undefined,
@@ -273,10 +306,6 @@ export const Webhooks = {
     return readEvent(body);
   },
 
-  /**
-   * Verifies a webhook from the two header values. Throws `WebhookVerificationError`;
-   * returns nothing on success. Use it when your framework hands you the values directly.
-   */
   verifySignature(
     rawBody: string | Uint8Array,
     signature: string | null | undefined,
@@ -286,4 +315,4 @@ export const Webhooks = {
   ): void {
     verifyBytes(toBytes(rawBody), signature ?? null, timestamp ?? null, secret, options);
   },
-} as const;
+};
