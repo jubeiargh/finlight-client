@@ -88,10 +88,10 @@ const byLink = await client.articles.getByLink('https://www.reuters.com/markets/
 
 const [nvidia] = await client.companies.search({ q: 'NVDA', mic: 'XNAS' });
 const many = await client.companies.getMany([4821, 1234]);
-const record = await client.companies.get(4821); // ETag revalidation is built in
+const record = await client.companies.get(4821); // no SDK cache: every call costs 1 credit
 console.log(cacheInfo(record)?.etag, many.skipped.length);
 
-// With your own ETag: null means "not modified"
+// You keep the record; pass its ETag back. null means "not modified" (still 1 credit)
 const fresh = await client.companies.get(4821, { ifNoneMatch: '"80b88d6b…"' });
 
 const sources = await client.sources.list();
@@ -100,7 +100,7 @@ const sources = await client.sources.list();
 - 404 は空の結果ではなく `NotFoundError`（`apiKind: 'not_found'`）です。
 - id 導入前に登録された記事は id で参照できません。`getByLink` を使ってください。
 - 企業のエンドポイントには `entityAccess` の権限が必要です。ない場合は 403（`ForbiddenError`）になります。
-- `companies.get` は ETag を保持して再検証し、304 のときはキャッシュしたレコードを返します。`cacheInfo(record)` で ETag を確認できます。独自の `ifNoneMatch` を渡した場合、304 は `null`（「変更なし」）になります。
+- SDK は企業レコードをキャッシュしません。クレジットを節約したい場合は、レコードを自分で保持し、`max-age` の間は再度呼び出さないでください。`cacheInfo(record)` で ETag と Cache-Control を確認できます。ETag を `ifNoneMatch` として渡すと、304 のときは `null`（「変更なし」）が返ります。304 も 1 クレジットかかるため、節約できるのはダウンロードでクレジットではありません。主要な企業フィールドは記事にすでに含まれています。
 - 参照（`companies.search`、`companies.getMany`、`companies.get`、`sources.list`）は記事リクエストと同じく、リクエストごとに 1 クレジットかかります。`getMany` は id ごとではなく 1 リクエストで 1 クレジットです。304 の再検証とエラー応答も 1 クレジットかかります。参照は記事のエンドポイントと月間クォータおよびバースト制限を共有するため、ここでも 429 が起こりえます。
 - `companies.search`、`companies.getMany`、`sources.list` は配列を返し、デコードできなかったエントリを `skipped` フィールドに持ちます。
 
@@ -276,7 +276,6 @@ await client.articles.search({ query: 'ticker:TSLA' }, { signal: controller.sign
 | `burstWaitMs` | `10000` | 429 に `Retry-After` がない場合のバースト再試行前の待ち時間。 |
 | `maxPages` | `10` | `searchAll` のページ数の上限。 |
 | `maxResponseBytes` | `33554432` (32 MiB) | REST 応答本文の最大サイズ。 |
-| `companyCacheSize` | `256` | `companies.get` の ETag キャッシュの件数。0 で無効。 |
 | `pingIntervalMs` / `watchdogTimeoutMs` / `rotationIntervalMs` | `25000` / `60000` / `6900000` | ストリームの ping、pong ウォッチドッグ、接続の更新。 |
 | `reconnectBaseDelayMs` / `reconnectMaxDelayMs` | `1000` / `30000` | ストリーム再接続のバックオフ：最初と最長の待ち時間。 |
 | `longBackoffMs` | `60000` | 「接続数超過」と 429 による接続拒否の後の待ち時間。 |

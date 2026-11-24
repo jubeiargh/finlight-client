@@ -83,10 +83,10 @@ const byLink = await client.articles.getByLink('https://www.reuters.com/markets/
 
 const [nvidia] = await client.companies.search({ q: 'NVDA', mic: 'XNAS' });
 const many = await client.companies.getMany([4821, 1234]);
-const record = await client.companies.get(4821); // ETag revalidation is built in
+const record = await client.companies.get(4821); // no SDK cache: every call costs 1 credit
 console.log(cacheInfo(record)?.etag, many.skipped.length);
 
-// With your own ETag: null means "not modified"
+// You keep the record; pass its ETag back. null means "not modified" (still 1 credit)
 const fresh = await client.companies.get(4821, { ifNoneMatch: '"80b88d6b…"' });
 
 const sources = await client.sources.list();
@@ -240,7 +240,6 @@ await client.articles.search({ query: 'ticker:TSLA' }, { signal: controller.sign
 | `burstWaitMs` | `10000` | {{cfg_burstWaitMs}} |
 | `maxPages` | `10` | {{cfg_maxPages}} |
 | `maxResponseBytes` | `33554432` (32 MiB) | {{cfg_maxResponseBytes}} |
-| `companyCacheSize` | `256` | {{cfg_companyCacheSize}} |
 | `pingIntervalMs` / `watchdogTimeoutMs` / `rotationIntervalMs` | `25000` / `60000` / `6900000` | {{cfg_liveness}} |
 | `reconnectBaseDelayMs` / `reconnectMaxDelayMs` | `1000` / `30000` | {{cfg_reconnect}} |
 | `longBackoffMs` | `60000` | {{cfg_longBackoff}} |

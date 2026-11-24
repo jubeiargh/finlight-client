@@ -88,10 +88,10 @@ const byLink = await client.articles.getByLink('https://www.reuters.com/markets/
 
 const [nvidia] = await client.companies.search({ q: 'NVDA', mic: 'XNAS' });
 const many = await client.companies.getMany([4821, 1234]);
-const record = await client.companies.get(4821); // ETag revalidation is built in
+const record = await client.companies.get(4821); // no SDK cache: every call costs 1 credit
 console.log(cacheInfo(record)?.etag, many.skipped.length);
 
-// With your own ETag: null means "not modified"
+// You keep the record; pass its ETag back. null means "not modified" (still 1 credit)
 const fresh = await client.companies.get(4821, { ifNoneMatch: '"80b88d6b…"' });
 
 const sources = await client.sources.list();
@@ -100,7 +100,7 @@ const sources = await client.sources.list();
 - 404 会抛出 `NotFoundError`（`apiKind: 'not_found'`），而不是返回空结果。
 - 在 id 上线之前收录的文章无法按 id 查询，请使用 `getByLink`。
 - 公司接口需要 `entityAccess` 权限，否则返回 403（`ForbiddenError`）。
-- `companies.get` 会保存 ETag 并重新验证；收到 304 时返回缓存的记录。`cacheInfo(record)` 可查看 ETag。如果传入自己的 `ifNoneMatch`，304 时返回 `null`（"未修改"）。
+- SDK 不缓存公司记录。如需节省额度，请自行保存记录，并在 `max-age` 内不要再次调用。`cacheInfo(record)` 可查看 ETag 和 Cache-Control。将 ETag 作为 `ifNoneMatch` 传回，304 时返回 `null`（"未修改"）；304 同样消耗 1 个额度，因此节省的是下载而不是额度。文章中已包含主要的公司字段。
 - 每次查询（`companies.search`、`companies.getMany`、`companies.get`、`sources.list`）与文章请求一样消耗 1 个额度；`getMany` 按请求计费，而不是按 id。304 重新验证和错误响应也消耗 1 个额度。查询与文章接口共用月度配额和突发限制，因此这里也可能出现 429。
 - `companies.search`、`companies.getMany` 和 `sources.list` 返回数组，并额外带有 `skipped` 字段，列出无法解码的条目。
 
@@ -276,7 +276,6 @@ await client.articles.search({ query: 'ticker:TSLA' }, { signal: controller.sign
 | `burstWaitMs` | `10000` | 429 没有 `Retry-After` 时，突发重试前的等待时间。 |
 | `maxPages` | `10` | `searchAll` 的页数上限。 |
 | `maxResponseBytes` | `33554432` (32 MiB) | REST 响应体的最大大小。 |
-| `companyCacheSize` | `256` | `companies.get` 的 ETag 缓存条目数；0 表示关闭。 |
 | `pingIntervalMs` / `watchdogTimeoutMs` / `rotationIntervalMs` | `25000` / `60000` / `6900000` | 流的 ping、pong 看门狗和连接更换。 |
 | `reconnectBaseDelayMs` / `reconnectMaxDelayMs` | `1000` / `30000` | 流重连退避：首次和最长等待。 |
 | `longBackoffMs` | `60000` | "连接过多"和 429 连接被拒后的等待时间。 |

@@ -152,31 +152,29 @@ describe('R: requests', () => {
     expect(cacheInfo(record)).toEqual({
       etag: f.response.headers.etag,
       cacheControl: f.response.headers['cache-control'],
-      notModified: false,
     });
+    // No company cache in the SDK: a second call without ifNoneMatch is a plain request.
+    serve(f.response);
+    const again = await client.companies.get(f.sdk.args.companyId);
+    expect(mock.requests[0].headers['if-none-match']).toBeUndefined();
+    expect(mock.requests[1].headers['if-none-match']).toBeUndefined();
+    expect(again).not.toBe(record);
+    expect(again).toEqual(record);
   });
 
   test(caseName('R-09'), async () => {
-    const first = loadFixture('fixtures/requests/companies-get.json');
     const f = loadFixture('fixtures/requests/companies-get-not-modified.json');
-    serve(first.response);
-    serve(f.response);
     serve(f.response);
     const { client } = restClient(mock.baseUrl);
-    const record = await client.companies.get(900001);
-    // Explicit If-None-Match, as in the fixture.
+    // The caller's own ETag goes out unchanged as If-None-Match.
     const again = await client.companies.get(f.sdk.args.companyId, { ifNoneMatch: f.sdk.args.ifNoneMatch });
-    expectRequest(1, f.request);
-    expect(mock.requests[1].headers['if-none-match']).toBe(f.request.headers['If-None-Match']);
+    expectRequest(0, f.request);
+    expect(mock.requests[0].headers['if-none-match']).toBe(f.sdk.args.ifNoneMatch);
+    expect(mock.requests[0].headers['if-none-match']).toBe(f.request.headers['If-None-Match']);
     // fetch would add Cache-Control: no-cache, which makes the server skip the 304.
-    expect(mock.requests[1].headers['cache-control'] ?? '').not.toMatch(/no-cache/);
-    // A caller-supplied ETag: "not modified" is null, never an error.
+    expect(mock.requests[0].headers['cache-control'] ?? '').not.toMatch(/no-cache/);
+    // "Not modified" is null, never an error and never a stored record.
     expect(again).toBeNull();
-    // Automatic revalidation with the SDK's own cached ETag returns the cached record.
-    const third = await client.companies.get(900001);
-    expect(cacheInfo(third)?.notModified).toBe(true);
-    expect(mock.requests[2].headers['if-none-match']).toBe(f.request.headers['If-None-Match']);
-    expect(third).toBe(record);
   });
 
   test(caseName('R-10'), async () => {

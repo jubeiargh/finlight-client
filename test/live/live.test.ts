@@ -93,15 +93,15 @@ live('live smoke against dev', () => {
     expect(err.errors[0].allowedValues).toContain('earnings');
   });
 
-  test('companies.search and get with ETag revalidation (or FORBIDDEN without entityAccess)', async () => {
+  test('companies.search and get with your own ETag (or FORBIDDEN without entityAccess)', async () => {
     try {
       const hits = await client.companies.search({ q: 'NVDA' });
       expect(hits.length).toBeGreaterThan(0);
       const record = await client.companies.get(hits[0].companyId);
-      const again = await client.companies.get(hits[0].companyId);
-      expect(again.companyId).toBe(record.companyId);
-      expect(again).toBe(record);
-      expect(cacheInfo(again)?.notModified).toBe(true);
+      const etag = cacheInfo(record)?.etag;
+      expect(etag).toBeTruthy();
+      const again = await client.companies.get(hits[0].companyId, { ifNoneMatch: etag as string });
+      expect(again).toBeNull();
     } catch (err) {
       expect(err).toBeInstanceOf(FinlightApiError);
       expect((err as FinlightApiError).code).toBe('FORBIDDEN');

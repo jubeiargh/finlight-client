@@ -86,10 +86,10 @@ const byLink = await client.articles.getByLink('https://www.reuters.com/markets/
 
 const [nvidia] = await client.companies.search({ q: 'NVDA', mic: 'XNAS' });
 const many = await client.companies.getMany([4821, 1234]);
-const record = await client.companies.get(4821); // ETag revalidation is built in
+const record = await client.companies.get(4821); // no SDK cache: every call costs 1 credit
 console.log(cacheInfo(record)?.etag, many.skipped.length);
 
-// With your own ETag: null means "not modified"
+// You keep the record; pass its ETag back. null means "not modified" (still 1 credit)
 const fresh = await client.companies.get(4821, { ifNoneMatch: '"80b88d6b…"' });
 
 const sources = await client.sources.list();
@@ -98,7 +98,7 @@ const sources = await client.sources.list();
 - A 404 is a `NotFoundError` (`apiKind: 'not_found'`), not an empty result.
 - Articles indexed before the id rollout have no id lookup. Use `getByLink` for them.
 - Company endpoints need the `entityAccess` entitlement, otherwise they answer 403 (`ForbiddenError`).
-- `companies.get` keeps the ETag and revalidates; on 304 you get the cached record. `cacheInfo(record)` shows the ETag. With your own `ifNoneMatch`, a 304 returns `null` ("not modified").
+- The SDK keeps no cache of company records. To save credits, keep the records yourself and do not call again within `max-age`. `cacheInfo(record)` shows the ETag and Cache-Control. Pass the ETag back as `ifNoneMatch` and a 304 returns `null` ("not modified"); a 304 costs 1 credit too, so it saves the download, not the credit. Articles already carry the main company fields.
 - Each lookup (`companies.search`, `companies.getMany`, `companies.get`, `sources.list`) costs 1 credit, like an article request; `getMany` costs 1 per request, not per id. A 304 revalidation and error answers cost 1 credit too. Lookups share the monthly quota and the burst limit with the article endpoints, so a 429 is possible here too.
 - `companies.search`, `companies.getMany` and `sources.list` return arrays with an extra `skipped` field for entries that could not be decoded.
 
@@ -274,7 +274,6 @@ await client.articles.search({ query: 'ticker:TSLA' }, { signal: controller.sign
 | `burstWaitMs` | `10000` | Wait before the burst retry when the 429 has no `Retry-After`. |
 | `maxPages` | `10` | Page limit of `searchAll`. |
 | `maxResponseBytes` | `33554432` (32 MiB) | Largest REST response body. |
-| `companyCacheSize` | `256` | Records in the ETag cache of `companies.get`; 0 turns it off. |
 | `pingIntervalMs` / `watchdogTimeoutMs` / `rotationIntervalMs` | `25000` / `60000` / `6900000` | Stream ping, pong watchdog and rotation. |
 | `reconnectBaseDelayMs` / `reconnectMaxDelayMs` | `1000` / `30000` | Stream reconnect backoff: first and largest wait. |
 | `longBackoffMs` | `60000` | Wait after "too many connections" and 429 dial refusals. |

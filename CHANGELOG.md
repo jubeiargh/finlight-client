@@ -19,7 +19,8 @@
 ### Added
 
 - `articles.searchAll` with `maxPages` (default 10), a page-by-page variant (`.pages()`) and `nextCursor` to continue.
-- Company lookups (`companies.search`, `getMany`, `get` with ETag revalidation) and the source catalog (`sources.list`). List results are arrays with a `skipped` field. `companies.get` with your own `ifNoneMatch` returns `null` on 304. Each lookup costs 1 credit, like an article request (`getMany` 1 per request); a 304 revalidation and errors cost 1 credit too.
+- Company lookups (`companies.search`, `getMany`, `get`) and the source catalog (`sources.list`). List results are arrays with a `skipped` field. Each lookup costs 1 credit, like an article request (`getMany` 1 per request); a 304 and errors cost 1 credit too.
+- The SDK keeps no cache of company records; every `companies.get` is a request. To save credits, keep the records yourself and do not call again within `max-age`. `cacheInfo(record)` returns the ETag and Cache-Control; pass the ETag back as `ifNoneMatch` and a 304 returns `null` ("not modified"). The `companyCacheSize` option and `CacheInfo.notModified` of earlier 4.0.0 pre-release builds are gone.
 - One error model: `FinlightApiError` with `status`, `code`, `title`, `detail`, `requestId`, `errors` (`FieldIssue[]`), `apiKind` and `raw` (the body as received), with one subclass per kind: `ValidationFailedError`, `CursorInvalidError`, `CursorMismatchError`, `UnauthorizedError`, `ForbiddenError`, `NotFoundError`, `RateLimitedError` (`limitType`, `retryAfterMs`) and `InternalServerError`. A `limitType` this version does not know is kept as sent and never retried. Plus `FinlightValidationError`, `FinlightNetworkError` (with `FinlightTimeoutError` under it), `FinlightDecodeError`, `WebhookVerificationError` and `PreemptedError`. All share the base `FinlightError` and a `kind` field.
 - Retries: 5xx, network errors and attempt timeouts up to 3 times with jittered backoff (POST search included); 400, 401, 403, 404 and monthly 429 never. A burst 429 waits exactly `Retry-After` (`burstWaitMs`, 10 s, when the header is missing) and retries once; this is on by default and `retryOnBurst: 'off'` turns it off. One `X-Request-Id` per logical call, kept on retries.
 - Every call takes an `AbortSignal`. Optional `totalTimeoutMs` per call.
@@ -38,4 +39,4 @@
 
 ### Contract
 
-- Built and tested against the finlight API v3 contract kit 3.0.0-rc.5 (vendored in `conformance/`, not published).
+- Built and tested against the finlight API v3 contract kit 3.0.0-rc.6 (vendored in `conformance/`, not published).

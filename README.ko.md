@@ -88,10 +88,10 @@ const byLink = await client.articles.getByLink('https://www.reuters.com/markets/
 
 const [nvidia] = await client.companies.search({ q: 'NVDA', mic: 'XNAS' });
 const many = await client.companies.getMany([4821, 1234]);
-const record = await client.companies.get(4821); // ETag revalidation is built in
+const record = await client.companies.get(4821); // no SDK cache: every call costs 1 credit
 console.log(cacheInfo(record)?.etag, many.skipped.length);
 
-// With your own ETag: null means "not modified"
+// You keep the record; pass its ETag back. null means "not modified" (still 1 credit)
 const fresh = await client.companies.get(4821, { ifNoneMatch: '"80b88d6b…"' });
 
 const sources = await client.sources.list();
@@ -100,7 +100,7 @@ const sources = await client.sources.list();
 - 404는 빈 결과가 아니라 `NotFoundError`(`apiKind: 'not_found'`)입니다.
 - id 도입 이전에 색인된 기사는 id로 조회할 수 없습니다. `getByLink`를 사용하세요.
 - 기업 엔드포인트에는 `entityAccess` 권한이 필요하며, 없으면 403(`ForbiddenError`)을 반환합니다.
-- `companies.get`은 ETag를 보관하고 재검증하며, 304이면 캐시된 레코드를 반환합니다. `cacheInfo(record)`로 ETag를 볼 수 있습니다. 직접 `ifNoneMatch`를 넘기면 304일 때 `null`("변경 없음")을 반환합니다.
+- SDK는 기업 레코드를 캐시하지 않습니다. 크레딧을 아끼려면 레코드를 직접 보관하고 `max-age` 동안 다시 호출하지 마세요. `cacheInfo(record)`로 ETag와 Cache-Control을 볼 수 있습니다. ETag를 `ifNoneMatch`로 넘기면 304일 때 `null`("변경 없음")을 반환합니다. 304도 1 크레딧이 들므로 아끼는 것은 다운로드이지 크레딧이 아닙니다. 주요 기업 필드는 기사에 이미 들어 있습니다.
 - 조회(`companies.search`, `companies.getMany`, `companies.get`, `sources.list`)는 기사 요청과 같이 요청마다 1 크레딧이 듭니다. `getMany`는 id마다가 아니라 요청당 1 크레딧입니다. 304 재검증과 오류 응답도 1 크레딧이 듭니다. 조회는 기사 엔드포인트와 월간 할당량 및 버스트 한도를 함께 쓰므로 여기서도 429가 발생할 수 있습니다.
 - `companies.search`, `companies.getMany`, `sources.list`는 배열을 반환하며, 디코딩할 수 없던 항목을 `skipped` 필드에 담습니다.
 
@@ -276,7 +276,6 @@ await client.articles.search({ query: 'ticker:TSLA' }, { signal: controller.sign
 | `burstWaitMs` | `10000` | 429에 `Retry-After`가 없을 때 버스트 재시도 전 대기 시간. |
 | `maxPages` | `10` | `searchAll`의 페이지 수 한도. |
 | `maxResponseBytes` | `33554432` (32 MiB) | REST 응답 본문의 최대 크기. |
-| `companyCacheSize` | `256` | `companies.get` ETag 캐시의 항목 수. 0이면 끔. |
 | `pingIntervalMs` / `watchdogTimeoutMs` / `rotationIntervalMs` | `25000` / `60000` / `6900000` | 스트림 ping, pong 감시, 연결 교체. |
 | `reconnectBaseDelayMs` / `reconnectMaxDelayMs` | `1000` / `30000` | 스트림 재연결 백오프: 첫 대기와 최대 대기. |
 | `longBackoffMs` | `60000` | "연결 수 초과" 및 429 연결 거부 후 대기 시간. |

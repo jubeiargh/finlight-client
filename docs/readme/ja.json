@@ -31,7 +31,7 @@
     "- 404 は空の結果ではなく `NotFoundError`（`apiKind: 'not_found'`）です。",
     "- id 導入前に登録された記事は id で参照できません。`getByLink` を使ってください。",
     "- 企業のエンドポイントには `entityAccess` の権限が必要です。ない場合は 403（`ForbiddenError`）になります。",
-    "- `companies.get` は ETag を保持して再検証し、304 のときはキャッシュしたレコードを返します。`cacheInfo(record)` で ETag を確認できます。独自の `ifNoneMatch` を渡した場合、304 は `null`（「変更なし」）になります。",
+    "- SDK は企業レコードをキャッシュしません。クレジットを節約したい場合は、レコードを自分で保持し、`max-age` の間は再度呼び出さないでください。`cacheInfo(record)` で ETag と Cache-Control を確認できます。ETag を `ifNoneMatch` として渡すと、304 のときは `null`（「変更なし」）が返ります。304 も 1 クレジットかかるため、節約できるのはダウンロードでクレジットではありません。主要な企業フィールドは記事にすでに含まれています。",
     "- 参照（`companies.search`、`companies.getMany`、`companies.get`、`sources.list`）は記事リクエストと同じく、リクエストごとに 1 クレジットかかります。`getMany` は id ごとではなく 1 リクエストで 1 クレジットです。304 の再検証とエラー応答も 1 クレジットかかります。参照は記事のエンドポイントと月間クォータおよびバースト制限を共有するため、ここでも 429 が起こりえます。",
     "- `companies.search`、`companies.getMany`、`sources.list` は配列を返し、デコードできなかったエントリを `skipped` フィールドに持ちます。"
   ],
@@ -135,7 +135,6 @@
   "retryIntro": "再試行のルール：",
   "cfg_retryDelays": "再試行間のバックオフ：最初と最長の待ち時間（ゆらぎ付き）。",
   "cfg_maxResponseBytes": "REST 応答本文の最大サイズ。",
-  "cfg_companyCacheSize": "`companies.get` の ETag キャッシュの件数。0 で無効。",
   "cfg_reconnect": "ストリーム再接続のバックオフ：最初と最長の待ち時間。",
   "cfg_longBackoff": "「接続数超過」と 429 による接続拒否の後の待ち時間。",
   "cfg_searchFailedThreshold": "`SEARCH_FAILED` がこの回数連続すると `onError` にエラーを渡します。",

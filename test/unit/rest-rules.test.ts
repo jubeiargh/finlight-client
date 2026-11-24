@@ -545,6 +545,34 @@ describe('R-ERR-1 / R-RETRY-1: errors and retries', () => {
   });
 });
 
+describe('companies.get keeps no cache', () => {
+  const COMPANY = loadFixture('fixtures/requests/companies-get.json').response;
+
+  test('repeated calls send no If-None-Match and return fresh records', async () => {
+    mock.enqueue(COMPANY);
+    mock.enqueue(COMPANY);
+    const { client } = restClient(mock.baseUrl);
+    const first = await client.companies.get(900001);
+    const second = await client.companies.get(900001);
+    expect(mock.requests).toHaveLength(2);
+    for (const r of mock.requests) expect(r.headers['if-none-match']).toBeUndefined();
+    expect(second).not.toBe(first);
+  });
+
+  test('a 304 without your own ETag is an error, not a stored record', async () => {
+    mock.enqueue({ status: 304 });
+    const { client } = restClient(mock.baseUrl);
+    const err = await client.companies.get(900001).catch((e) => e);
+    expect(err).toBeInstanceOf(FinlightDecodeError);
+  });
+
+  test('companyCacheSize is not a config key', () => {
+    expect(() => new FinlightClient({ apiKey: KIT_API_KEY, companyCacheSize: 10 } as never)).toThrow(
+      FinlightValidationError,
+    );
+  });
+});
+
 describe('R-CONFIG-1: configuration and identification', () => {
   test('defaults point to production; URLs with a trailing slash still hit the right path', async () => {
     expect(DEFAULTS.baseUrl).toBe('https://api.finlight.me');

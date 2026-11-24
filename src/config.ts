@@ -41,8 +41,6 @@ export interface FinlightConfig {
   maxPages?: number;
   /** Largest REST response body. Default 32 MiB. */
   maxResponseBytes?: number;
-  /** Size of the ETag cache of `companies.get` (records). Default 256, 0 turns it off. */
-  companyCacheSize?: number;
 
   /** Application ping interval on streams. Default 25000. */
   pingIntervalMs?: number;
@@ -98,7 +96,6 @@ export interface ResolvedConfig {
   burstWaitMs: number;
   maxPages: number;
   maxResponseBytes: number;
-  companyCacheSize: number;
   pingIntervalMs: number;
   watchdogTimeoutMs: number;
   rotationIntervalMs: number;
@@ -130,7 +127,6 @@ export const DEFAULTS = {
   burstWaitMs: 10_000,
   maxPages: 10,
   maxResponseBytes: 32 * 1024 * 1024,
-  companyCacheSize: 256,
   pingIntervalMs: 25_000,
   watchdogTimeoutMs: 60_000,
   rotationIntervalMs: 115 * 60_000,
@@ -160,7 +156,6 @@ const CONFIG_KEYS: ReadonlyArray<keyof FinlightConfig> = [
   'burstWaitMs',
   'maxPages',
   'maxResponseBytes',
-  'companyCacheSize',
   'pingIntervalMs',
   'watchdogTimeoutMs',
   'rotationIntervalMs',
@@ -260,7 +255,6 @@ export function resolveConfig(input: unknown): { apiKey: string; config: Resolve
     burstWaitMs: num(input, 'burstWaitMs', DEFAULTS.burstWaitMs, 0),
     maxPages,
     maxResponseBytes: num(input, 'maxResponseBytes', DEFAULTS.maxResponseBytes, 1024),
-    companyCacheSize: Math.floor(num(input, 'companyCacheSize', DEFAULTS.companyCacheSize, 0)),
     pingIntervalMs: num(input, 'pingIntervalMs', DEFAULTS.pingIntervalMs, 1),
     watchdogTimeoutMs: num(input, 'watchdogTimeoutMs', DEFAULTS.watchdogTimeoutMs, 1),
     rotationIntervalMs: num(input, 'rotationIntervalMs', DEFAULTS.rotationIntervalMs, 1),

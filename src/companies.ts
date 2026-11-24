@@ -1,6 +1,5 @@
 import type { CallOptions } from './articles';
 import { decodeCompanyRecord, decodeEntries, envelopeField, toDecodeError } from './decode';
-import { FinlightDecodeError } from './errors';
 import { FinlightValidationError } from './errors';
 import type { HttpTransport } from './http';
 import type { CompanyList, CompanyRecord, SkippedEntry } from './models';
@@ -14,19 +13,20 @@ import {
 
 export interface CompanyGetOptions extends CallOptions {
   /**
-   * Your own ETag. The SDK sends it as `If-None-Match`; on 304 the call returns `null`
-   * ("not modified"). Without this option the SDK revalidates its own cached copy and
-   * returns that copy on 304.
+   * Your own ETag, from `cacheInfo(record)` of a record you kept. The SDK sends it as
+   * `If-None-Match`; on 304 the call returns `null` ("not modified"). Without this option
+   * no `If-None-Match` is sent. A 304 costs 1 credit too.
    */
   ifNoneMatch?: string;
 }
 
-/** HTTP caching data of a record from `companies.get`. */
+/**
+ * HTTP caching data of a record from `companies.get`. The SDK keeps no cache of its own;
+ * use this to keep records yourself and pass the ETag back as `ifNoneMatch`.
+ */
 export interface CacheInfo {
   etag: string | null;
   cacheControl: string | null;
-  /** `true` when the server answered 304 and the cached record was returned. */
-  notModified: boolean;
 }
 
 const CACHE_INFO = new WeakMap<object, CacheInfo>();
@@ -49,8 +49,6 @@ export function withSkipped<T>(items: T[], skipped: SkippedEntry[]): T[] & { ski
  * cost 1 credit too.
  */
 export class CompaniesService {
-  readonly #cache = new Map<number, { etag: string; record: CompanyRecord }>();
-
   constructor(private readonly http: HttpTransport) {}
 
   /** Resolves a ticker, name, ISIN or vendor notation. At most 10 results, no pages. Costs 1 credit. */
@@ -88,9 +86,11 @@ export class CompaniesService {
   }
 
   /**
-   * `GET /v3/companies/{companyId}`. Revalidates with the ETag of a cached copy and serves
-   * that copy on 304. `cacheInfo(record)` exposes the ETag. A 404 is a `FinlightApiError`.
-   * Costs 1 credit per call, like an article request; a 304 revalidation costs 1 credit too.
+   * `GET /v3/companies/{companyId}`. The SDK keeps no cache: every call is a request and
+   * costs 1 credit, like an article request, a 304 included. To save credits, keep the
+   * record yourself and do not call again within `max-age`; `cacheInfo(record)` exposes the
+   * ETag and Cache-Control. With `ifNoneMatch` a 304 returns `null`. A 404 is a
+   * `FinlightApiError`.
    */
   get(companyId: number, options?: CallOptions): Promise<CompanyRecord>;
   get(companyId: number, options: CompanyGetOptions): Promise<CompanyRecord | null>;
@@ -100,48 +100,25 @@ export class CompaniesService {
     if (opts.ifNoneMatch !== undefined && (typeof opts.ifNoneMatch !== 'string' || !opts.ifNoneMatch)) {
       throw new FinlightValidationError('ifNoneMatch must be a non-empty string');
     }
-    const cached = this.#cache.get(id);
-    const etag = (opts.ifNoneMatch as string | undefined) ?? cached?.etag;
+    const etag = opts.ifNoneMatch as string | undefined;
     const res = await this.http.request({
       method: 'GET',
       path: `/v3/companies/${id}`,
       // fetch adds "Cache-Control: no-cache" to conditional requests unless one is set, and the
       // server then never answers 304. max-age=0 still asks for revalidation.
-      headers: etag ? { 'If-None-Match': etag, 'Cache-Control': 'max-age=0' } : {},
+      headers: etag !== undefined ? { 'If-None-Match': etag, 'Cache-Control': 'max-age=0' } : {},
       allowNotModified: etag !== undefined,
       signal: opts.signal as AbortSignal | undefined,
     });
-    const cacheControl = res.headers.get('cache-control');
-    if (res.status === 304) {
-      // Your own ETag: "not modified" is null, never an error.
-      if (opts.ifNoneMatch !== undefined) return null;
-      if (cached && cached.etag === etag) {
-        CACHE_INFO.set(cached.record, { etag: cached.etag, cacheControl, notModified: true });
-        this.touch(id, cached);
-        return cached.record;
-      }
-      throw new FinlightDecodeError('unexpected 304 Not Modified without a cached record', null);
-    }
+    // Only possible with your own ETag: "not modified" is null, never an error.
+    if (res.status === 304) return null;
     let record: CompanyRecord;
     try {
       record = decodeCompanyRecord(envelopeField(res.body, 'company'));
     } catch (err) {
       throw toDecodeError(err, res.body);
     }
-    const newEtag = res.headers.get('etag');
-    CACHE_INFO.set(record, { etag: newEtag, cacheControl, notModified: false });
-    if (newEtag) this.touch(id, { etag: newEtag, record });
+    CACHE_INFO.set(record, { etag: res.headers.get('etag'), cacheControl: res.headers.get('cache-control') });
     return record;
-  }
-
-  private touch(id: number, entry: { etag: string; record: CompanyRecord }): void {
-    const size = this.http.config.companyCacheSize;
-    if (size <= 0) return;
-    this.#cache.delete(id);
-    this.#cache.set(id, entry);
-    while (this.#cache.size > size) {
-      const oldest = this.#cache.keys().next().value as number;
-      this.#cache.delete(oldest);
-    }
   }
 }

@@ -31,7 +31,7 @@
     "- A 404 is a `NotFoundError` (`apiKind: 'not_found'`), not an empty result.",
     "- Articles indexed before the id rollout have no id lookup. Use `getByLink` for them.",
     "- Company endpoints need the `entityAccess` entitlement, otherwise they answer 403 (`ForbiddenError`).",
-    "- `companies.get` keeps the ETag and revalidates; on 304 you get the cached record. `cacheInfo(record)` shows the ETag. With your own `ifNoneMatch`, a 304 returns `null` (\"not modified\").",
+    "- The SDK keeps no cache of company records. To save credits, keep the records yourself and do not call again within `max-age`. `cacheInfo(record)` shows the ETag and Cache-Control. Pass the ETag back as `ifNoneMatch` and a 304 returns `null` (\"not modified\"); a 304 costs 1 credit too, so it saves the download, not the credit. Articles already carry the main company fields.",
     "- Each lookup (`companies.search`, `companies.getMany`, `companies.get`, `sources.list`) costs 1 credit, like an article request; `getMany` costs 1 per request, not per id. A 304 revalidation and error answers cost 1 credit too. Lookups share the monthly quota and the burst limit with the article endpoints, so a 429 is possible here too.",
     "- `companies.search`, `companies.getMany` and `sources.list` return arrays with an extra `skipped` field for entries that could not be decoded."
   ],
@@ -135,7 +135,6 @@
   "retryIntro": "Retries:",
   "cfg_retryDelays": "Backoff between retries: first wait and largest wait (with jitter).",
   "cfg_maxResponseBytes": "Largest REST response body.",
-  "cfg_companyCacheSize": "Records in the ETag cache of `companies.get`; 0 turns it off.",
   "cfg_reconnect": "Stream reconnect backoff: first and largest wait.",
   "cfg_longBackoff": "Wait after \"too many connections\" and 429 dial refusals.",
   "cfg_searchFailedThreshold": "After this many `SEARCH_FAILED` in a row an error goes to `onError`.",
