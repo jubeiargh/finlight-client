@@ -8,7 +8,7 @@ import { checkOptions } from './params';
 export class SourcesService {
   constructor(private readonly http: HttpTransport) {}
 
-  /** The full source catalog, sorted by domain. Costs 1 credit per successful request. */
+  /** The full source catalog, sorted by domain. Costs 1 credit per request, errors included. */
   async list(options?: CallOptions): Promise<SourceList> {
     const opts = checkOptions(options, ['signal'], 'sources.list');
     const res = await this.http.request({

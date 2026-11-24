@@ -32,7 +32,7 @@
     "- Articles indexed before the id rollout have no id lookup. Use `getByLink` for them.",
     "- Company endpoints need the `entityAccess` entitlement, otherwise they answer 403 (`ForbiddenError`).",
     "- `companies.get` keeps the ETag and revalidates; on 304 you get the cached record. `cacheInfo(record)` shows the ETag. With your own `ifNoneMatch`, a 304 returns `null` (\"not modified\").",
-    "- Each successful lookup (`companies.search`, `companies.getMany`, `companies.get`, `sources.list`) costs 1 credit, like an article request; `getMany` costs 1 per request, not per id. A 304 revalidation and error answers are free. Lookups share the monthly quota and the burst limit with the article endpoints, so a 429 is possible here too.",
+    "- Each lookup (`companies.search`, `companies.getMany`, `companies.get`, `sources.list`) costs 1 credit, like an article request; `getMany` costs 1 per request, not per id. A 304 revalidation and error answers cost 1 credit too. Lookups share the monthly quota and the burst limit with the article endpoints, so a 429 is possible here too.",
     "- `companies.search`, `companies.getMany` and `sources.list` return arrays with an extra `skipped` field for entries that could not be decoded."
   ],
   "h_presence": "Absent, null and empty",

@@ -45,8 +45,8 @@ export function withSkipped<T>(items: T[], skipped: SkippedEntry[]): T[] & { ski
 
 /**
  * Company master data. Needs the `entityAccess` entitlement (403 otherwise).
- * Each successful call costs 1 credit, like an article request; a 304 revalidation and
- * errors are free.
+ * Each call costs 1 credit, like an article request; a 304 revalidation and errors
+ * cost 1 credit too.
  */
 export class CompaniesService {
   readonly #cache = new Map<number, { etag: string; record: CompanyRecord }>();
@@ -90,7 +90,7 @@ export class CompaniesService {
   /**
    * `GET /v3/companies/{companyId}`. Revalidates with the ETag of a cached copy and serves
    * that copy on 304. `cacheInfo(record)` exposes the ETag. A 404 is a `FinlightApiError`.
-   * Costs 1 credit when the server sends the record (200); a 304 revalidation is free.
+   * Costs 1 credit per call, like an article request; a 304 revalidation costs 1 credit too.
    */
   get(companyId: number, options?: CallOptions): Promise<CompanyRecord>;
   get(companyId: number, options: CompanyGetOptions): Promise<CompanyRecord | null>;
