@@ -75,10 +75,20 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # The gitleaks GitHub Action needs a paid license for organization
+      # repositories; the CLI does not. Pinned release, checksum-verified.
+      # .gitleaks.toml allowlists the synthetic keys of the contract kit and the tests.
       - name: Secret scan
-        uses: gitleaks/gitleaks-action@v2
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_VERSION: 8.21.2
+          GITLEAKS_SHA256: 5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba
+        run: |
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" git --config .gitleaks.toml --redact --no-banner --verbose .
       - name: No AI attribution in new commit messages
         env:
           PR_BASE: ${{ github.event.pull_request.base.sha }}

@@ -126,6 +126,8 @@ interface Conn {
 const NO_WEBSOCKETS_PREFIX = 'Your subscription does not include WebSockets';
 const QUOTA_PREFIX = 'WebSocket quota exceeded';
 const TOO_MANY_PREFIX = 'Too many concurrent connections';
+/** How long a failed renewal waits for the old connection's close reply before dialing again. */
+const ROTATION_CLOSE_WAIT_MS = 5_000;
 
 function refusalMessage(body: string): string | null {
   if (!body) return null;
@@ -223,6 +225,7 @@ export class StreamSession implements FinlightStream {
   #conns = new Set<Conn>();
   #current: Conn | null = null;
   #rotatingFrom: Conn | null = null;
+  #redialAfterClose: { conn: Conn; timer: unknown } | null = null;
   #reconnectTimer: unknown = null;
   #failures = 0;
   #quotaWaits = 0;
@@ -325,6 +328,10 @@ export class StreamSession implements FinlightStream {
     if (this.#reconnectTimer !== null) {
       this.#cfg.clock.clearTimeout(this.#reconnectTimer);
       this.#reconnectTimer = null;
+    }
+    if (this.#redialAfterClose) {
+      this.#cfg.clock.clearTimeout(this.#redialAfterClose.timer);
+      this.#redialAfterClose = null;
     }
     for (const conn of this.#conns) this.shutdown(conn, true);
     this.#current = null;
@@ -525,10 +532,13 @@ export class StreamSession implements FinlightStream {
   private handleFrame(conn: Conn, frame: DecodedFrame, json: unknown): void {
     switch (frame.type) {
       case 'pong':
+        // The connection works: the reconnect backoff starts over.
+        this.#failures = 0;
         this.armWatchdog(conn, true);
         return;
       case 'admitted': {
-        this.#failures = 0;
+        // Admitted comes before the subscribe is checked, so it does not reset the
+        // reconnect backoff (admitted then SEARCH_FAILED must back off); a pong or an article does.
         this.#quotaWaits = 0;
         if (conn === this.#current && this.#rotatingFrom) {
           const old = this.#rotatingFrom;
@@ -602,6 +612,7 @@ export class StreamSession implements FinlightStream {
   }
 
   private handleArticle(frame: Extract<DecodedFrame, { type: 'article' }>, json: unknown): void {
+    this.#failures = 0;
     this.#searchFailed = 0;
     let article;
     try {
@@ -646,6 +657,10 @@ export class StreamSession implements FinlightStream {
     this.#conns.delete(conn);
     this.hooks.onConnectionClosed?.({ code, connection: conn.id });
     if (this.#ended) return;
+    if (conn === this.#redialAfterClose?.conn) {
+      this.redialAfterRotation();
+      return;
+    }
     if (conn === this.#rotatingFrom) {
       this.#rotatingFrom = null;
       return;
@@ -653,13 +668,27 @@ export class StreamSession implements FinlightStream {
     if (conn !== this.#current) return;
     this.#current = null;
 
-    let planned = conn.planned ?? this.classifyClose(conn, code);
-    if (this.#rotatingFrom) {
-      // The new connection of a rotation failed: keep nothing half-open, reconnect now.
-      const old = this.#rotatingFrom;
+    const old = this.#rotatingFrom;
+    // A failed renewal dial is expected at a connection limit of 1: it is not reported.
+    const planned = conn.planned ?? this.classifyClose(conn, code, old !== null);
+    if (old) {
       this.#rotatingFrom = null;
+      if (planned.kind === 'reconnect') {
+        // The renewal dial was refused or failed, often because the old connection still counts
+        // against the plan's limit. Break before make: close the old connection, wait for its
+        // close reply (at most 5 s), then dial again at once. Only a second refusal waits.
+        this.#pendingQuotaError = null;
+        this.#redialAfterClose = {
+          conn: old,
+          timer: this.#cfg.clock.setTimeout(() => {
+            old.ws.terminate();
+            this.redialAfterRotation();
+          }, ROTATION_CLOSE_WAIT_MS),
+        };
+        this.shutdown(old, true);
+        return;
+      }
       this.shutdown(old, true);
-      if (planned.kind === 'reconnect') planned = { kind: 'reconnect', reason: 'rotation', delay: 'now' };
     }
     if (planned.kind === 'terminal') {
       this.finish({ error: planned.error });
@@ -668,7 +697,19 @@ export class StreamSession implements FinlightStream {
     this.scheduleReconnect(planned.reason, planned.delay);
   }
 
-  private classifyClose(conn: Conn, code: number): Planned {
+  private redialAfterRotation(): void {
+    if (!this.#redialAfterClose) return;
+    this.#cfg.clock.clearTimeout(this.#redialAfterClose.timer);
+    this.#redialAfterClose = null;
+    this.scheduleReconnect('rotation', 'now');
+  }
+
+  private classifyClose(conn: Conn, code: number, quiet = false): Planned {
+    const report = (error: FinlightError): void => {
+      if (quiet)
+        this.#cfg.log.info(`the renewal dial failed (${error.message}); closing the old connection first`);
+      else this.report(error);
+    };
     const refusal = conn.refusal;
     if (refusal) {
       const { status, message, body } = refusal;
@@ -680,7 +721,7 @@ export class StreamSession implements FinlightStream {
         }
         if (text.startsWith(QUOTA_PREFIX)) return this.quotaPlan(dialError(status, message, body));
         if (text.startsWith(TOO_MANY_PREFIX)) {
-          this.report(
+          report(
             dialError(
               status,
               message,
@@ -691,15 +732,15 @@ export class StreamSession implements FinlightStream {
           );
           return { kind: 'reconnect', reason: 'connection_limit', delay: 'long' };
         }
-        this.report(dialError(status, message, body));
+        report(dialError(status, message, body));
         return { kind: 'reconnect', reason: 'dial_refused', delay: 'long' };
       }
       if (status === 429) {
-        this.report(dialError(status, message, body));
+        report(dialError(status, message, body));
         return { kind: 'reconnect', reason: 'rate_limited', delay: 'long' };
       }
       if (status >= 500) return { kind: 'reconnect', reason: 'dial_refused', delay: 'backoff' };
-      this.report(dialError(status, message, body));
+      report(dialError(status, message, body));
       return { kind: 'reconnect', reason: 'dial_refused', delay: 'backoff' };
     }
     if (code === 1008) {
@@ -719,7 +760,7 @@ export class StreamSession implements FinlightStream {
       };
     }
     if (!conn.opened) {
-      this.report(new FinlightNetworkError('could not connect to the stream endpoint'));
+      report(new FinlightNetworkError('could not connect to the stream endpoint'));
       return { kind: 'reconnect', reason: 'dial_failed', delay: 'backoff' };
     }
     return { kind: 'reconnect', reason: 'closed', delay: 'backoff' };

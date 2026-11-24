@@ -153,7 +153,7 @@ for await (const item of client.rawStream({ query: 'source:www.reuters.com' })) 
 Things to know:
 
 - **Connection limit.** Your plan's WebSocket limit is shared by enriched streams, raw streams and older SDK versions. Do not run old and new streams side by side. When the limit is reached the SDK waits at least 60 s and tries again; `{ takeover: true }` replaces your stalest connection instead.
-- **Two hour limit.** The gateway ends every connection after 2 h. The SDK opens a new connection before that and re-subscribes.
+- **Two hour limit.** The gateway ends every connection after 2 h. The SDK opens a new connection before that, re-subscribes, and closes the old one once the new one is admitted. When your plan is at its connection limit (for example a limit of 1), the old connection still counts and the new dial is refused; the SDK then closes the old connection and dials again at once, so the gap is about one dial long. Only if that dial is refused too does the usual wait of at least 60 s apply.
 - **Initial push.** After each subscribe the enriched stream sends the latest matching article. It can be old. The SDK drops it when it was already delivered on this stream.
 - **Large frames.** Live frames over 32,000 bytes are dropped by the server without notice. This can happen with `include: ['content']` on long articles. Fetch the text with `articles.get(id, { include: ['content'] })` instead.
 - `onAdmitted` fires before the server checks your subscribe. It does not mean the subscribe was accepted.

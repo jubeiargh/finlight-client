@@ -1,4 +1,5 @@
 # The contract kit and the tests use synthetic keys and secrets (sk_000..., 0123456789abcdef...).
+# CI runs the gitleaks CLI over the full history with this file.
 [extend]
 useDefault = true
 
@@ -7,4 +8,8 @@ description = "synthetic test data"
 paths = [
   '''^conformance/''',
   '''^test/''',
+]
+regexes = [
+  # dummy key of a 2025 integration test (src/__tests__/integration/, since removed)
+  '''^invalid_key_12345$''',
 ]

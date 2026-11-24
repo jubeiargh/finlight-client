@@ -422,3 +422,181 @@ describe('searchFailedThreshold', () => {
     }
   });
 });
+
+describe('reconnect backoff starts over only on a pong or an article', () => {
+  const failed = {
+    event: 'connection.error',
+    payloadVersion: 3,
+    data: { code: 'SEARCH_FAILED', message: 'x' },
+  };
+
+  /** Runs `n` connections that are admitted and then fail the initial search. */
+  async function admittedThenSearchFailed(probe: StreamProbe, n: number): Promise<void> {
+    for (let i = 0; i < n; i++) {
+      const dial = await ws.nextDial();
+      await dial.conn!.next();
+      dial.conn!.send(admitted);
+      const before = probe.scheduled.length;
+      dial.conn!.send(failed);
+      await waitFor(() => probe.scheduled.length > before, 'reconnect');
+      await probe.advance(probe.scheduled.at(-1)!.delayMs);
+    }
+  }
+
+  test('connection.admitted does not reset it: admitted then SEARCH_FAILED keeps backing off', async () => {
+    const probe = new StreamProbe(ws, {
+      raw: false,
+      params: {},
+      config: { searchFailedThreshold: 100 },
+    }).start();
+    try {
+      await admittedThenSearchFailed(probe, 4);
+      // 1 s base, doubled per failure, 50-100 % jitter: 0.5-1 s, 1-2 s, 2-4 s, 4-8 s.
+      probe.scheduled.forEach((s, i) => {
+        expect(s.reason).toBe('search_failed');
+        expect(s.delayMs).toBeGreaterThanOrEqual(500 * 2 ** i);
+        expect(s.delayMs).toBeLessThanOrEqual(1000 * 2 ** i);
+      });
+    } finally {
+      await probe.stop();
+    }
+  });
+
+  test('a pong resets it', async () => {
+    const probe = new StreamProbe(ws, {
+      raw: false,
+      params: {},
+      config: { searchFailedThreshold: 100 },
+    }).start();
+    try {
+      await admittedThenSearchFailed(probe, 3);
+      const dial = await ws.nextDial();
+      await dial.conn!.next();
+      dial.conn!.send(admitted);
+      await probe.advance(25_000);
+      expect(probe.pongs).toBe(1);
+      const before = probe.scheduled.length;
+      dial.conn!.ws.terminate();
+      await waitFor(() => probe.scheduled.length > before, 'reconnect');
+      expect(probe.scheduled.at(-1)!.reason).toBe('closed');
+      expect(probe.scheduled.at(-1)!.delayMs).toBeLessThanOrEqual(1000);
+    } finally {
+      await probe.stop();
+    }
+  });
+
+  test('an article resets it', async () => {
+    const probe = new StreamProbe(ws, {
+      raw: false,
+      params: {},
+      config: { searchFailedThreshold: 100 },
+    }).start();
+    try {
+      await admittedThenSearchFailed(probe, 3);
+      const dial = await ws.nextDial();
+      await dial.conn!.next();
+      dial.conn!.send(admitted);
+      dial.conn!.send({ event: 'article.created', payloadVersion: 3, data: ARTICLE });
+      await waitFor(() => probe.items.length === 1, 'item');
+      const before = probe.scheduled.length;
+      dial.conn!.ws.terminate();
+      await waitFor(() => probe.scheduled.length > before, 'reconnect');
+      expect(probe.scheduled.at(-1)!.delayMs).toBeLessThanOrEqual(1000);
+    } finally {
+      await probe.stop();
+    }
+  });
+});
+
+describe('renewal at the connection limit: break before make after a refused dial', () => {
+  const TOO_MANY = {
+    status: 403,
+    body: '{"message":"Too many concurrent connections. Use x-takeover: true header to replace an existing connection."}',
+  };
+  const config = { rotationIntervalMs: 10_000 };
+
+  /** Opens the first connection, then lets the renewal dial meet the scripted answers. */
+  async function renewInto(
+    probe: StreamProbe,
+    answers: Array<{ status: number; body: string }>,
+    pause = false,
+  ) {
+    const first = await ws.nextDial();
+    await first.conn!.next();
+    first.conn!.send(admitted);
+    await waitFor(() => probe.admitted.length === 1, 'admitted');
+    // Pausing the server side holds back the reply to the client's close frame.
+    if (pause) (first.conn!.ws as unknown as { _socket: { pause(): void } })._socket.pause();
+    ws.dialScript.push(...answers);
+    await probe.advance(10_000);
+    const renewal = await ws.nextDial('renewal dial');
+    expect(renewal.accepted).toBe(false);
+    return first;
+  }
+
+  test('closes the old connection, dials again at once, and does not report the refusal', async () => {
+    const probe = new StreamProbe(ws, { raw: false, params: {}, config }).start();
+    try {
+      const first = await renewInto(probe, [TOO_MANY]);
+      const again = await ws.nextDial('second renewal dial');
+      expect(again.accepted).toBe(true);
+      await waitFor(() => first.conn!.closedCode !== null, 'old connection closed');
+      expect(first.conn!.closedCode).toBe(1000);
+      await again.conn!.next();
+      again.conn!.send(admitted);
+      await waitFor(() => probe.reconnects.length === 1, 'reconnect signal');
+      expect(probe.reconnects[0].reason).toBe('rotation');
+      expect(probe.errors).toHaveLength(0);
+      expect(probe.scheduled).toEqual([
+        { delayMs: 0, reason: 'rotation' },
+        { delayMs: 0, reason: 'rotation' },
+      ]);
+      expect(probe.done).toBe(false);
+    } finally {
+      await probe.stop();
+    }
+  });
+
+  test('waits for the close reply of the old connection, at most 5 s', async () => {
+    const probe = new StreamProbe(ws, { raw: false, params: {}, config }).start();
+    let first: Awaited<ReturnType<typeof renewInto>> | undefined;
+    try {
+      first = await renewInto(probe, [TOO_MANY], true);
+      await probe.advance(4_999);
+      expect(ws.dialCount).toBe(2);
+      await probe.advance(1);
+      const again = await ws.nextDial('second renewal dial');
+      expect(again.accepted).toBe(true);
+      expect(probe.errors).toHaveLength(0);
+    } finally {
+      (first?.conn!.ws as unknown as { _socket: { resume(): void } } | undefined)?._socket.resume();
+      await probe.stop();
+    }
+  });
+
+  test('when the second dial is refused too, the long wait applies and the error is reported', async () => {
+    const probe = new StreamProbe(ws, { raw: false, params: {}, config }).start();
+    try {
+      await renewInto(probe, [TOO_MANY, TOO_MANY]);
+      const again = await ws.nextDial('second renewal dial');
+      expect(again.accepted).toBe(false);
+      await waitFor(() => probe.scheduled.length === 3, 'long wait');
+      expect(probe.scheduled[2].reason).toBe('connection_limit');
+      expect(probe.scheduled[2].delayMs).toBeGreaterThanOrEqual(60_000);
+      expect(probe.errors).toHaveLength(1);
+      expect((probe.errors[0] as FinlightApiError).status).toBe(403);
+      expect(probe.done).toBe(false);
+    } finally {
+      await probe.stop();
+    }
+  });
+
+  test('a refusal that ends the stream still ends it', async () => {
+    const probe = new StreamProbe(ws, { raw: false, params: {}, config }).start();
+    await renewInto(probe, [{ status: 401, body: '{"message":"Unauthorized"}' }]);
+    await waitFor(() => probe.done, 'terminal');
+    expect((probe.terminal as FinlightApiError).status).toBe(401);
+    expect(ws.dialCount).toBe(2);
+    await probe.stop();
+  });
+});
