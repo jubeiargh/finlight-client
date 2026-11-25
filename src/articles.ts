@@ -182,7 +182,7 @@ export class ArticlesService {
     return decodeArticle(envelopeField(res.body, 'article'));
   }
 
-  /** `GET /v3/articles/by-link`. Reaches every article, also those from before the id rollout. */
+  /** `GET /v3/articles/by-link`. Also finds articles from before the id rollout. Needs the custom-source grant and the plan date window; otherwise 404. */
   async getByLink(link: string, options?: LookupOptions): Promise<Article> {
     checkNonEmptyString(link, 'link');
     const opts = checkOptions(options, ['signal', 'include'], 'getByLink');
