@@ -1,471 +1,351 @@
-# finlight API Client
+# finlight client for TypeScript
 
 *English | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)*
 
-The **finlight API Client** is a modern TypeScript SDK for accessing the [finlight.me](https://finlight.me) platform. It provides robust and fully-typed REST and WebSocket interfaces to fetch market-relevant news articles enriched with sentiment, metadata, and company tagging.
+> **Breaking release.** 4.x speaks finlight API v3 only (REST `/v3`, WebSocket `payloadVersion` 3, v3 webhooks) and does not run 3.x code. Read [Migrating from 3.x](#migration) and the [changelog](CHANGELOG.md) first. To stay on API v2, pin `finlight-client@^3`.
 
-## ✨ Features
+Typed client for [finlight.me](https://finlight.me): search financial news, look up articles, companies and sources, follow live articles over WebSocket, and verify webhooks.
 
-- 🔎 Advanced article search with flexible query language
-- 🔌 Real-time article streaming via Enhanced and Raw WebSocket
-- 💡 Full support for company tagging and content filters
-- 🔁 Built-in retries and automatic reconnection
-- 🔐 Secure API key authentication
-- 📝 Configurable logging (console, winston, pino, custom)
-- 🔔 Webhook support with HMAC verification
-- ✅ Strong TypeScript types for better DX
+## Versions
 
----
+| SDK version | API version | Status |
+|---|---|---|
+| 4.x | v3 (`/v3`, WebSocket `payloadVersion` 3, webhooks v3) | current |
+| 3.x | v1/v2 | no further releases |
 
-## 📦 Installation
+SDK and API versions are independent: new API fields arrive in compatible 4.x releases. These SDKs speak API v3: TypeScript 4.x, Python 3.x, PHP 2.x, Go `/v2`, .NET 2.x, Java 1.x, Ruby 1.x, Rust 0.2.
+
+`^3` and `~3` never resolve to 4.x. Open ranges like `*` or `>=3` do, so pin a major.
+
+## Requirements
+
+- Node.js >= 20 (the SDK uses the built-in `fetch`)
+- TypeScript >= 5.0 (only if you use TypeScript)
+- `ws` >= 8.18 (installed with the SDK)
+
+## Installation
 
 ```bash
-npm install finlight-client
+npm install finlight-client@^4
 ```
 
----
-
-## 🚀 Quick Start
-
-### Initialize the Client
+## Quick start
 
 ```ts
-import { FinlightApi } from 'finlight-client';
+import { FinlightClient } from 'finlight-client';
 
-const api = new FinlightApi({
-  apiKey: 'your-api-key', // Required
+const client = new FinlightClient({ apiKey: process.env.FINLIGHT_API_KEY! });
+
+const page = await client.articles.search({
+  query: 'ticker:NVDA AND eventType:earnings',
+  languages: ['en'],
+  include: ['companies', 'events'],
+  limit: 20,
 });
+for (const article of page.articles) console.log(article.publishedAt, article.title);
 ```
 
-### With Custom Logging
+The SDK sends only the parameters you set. It adds no defaults: the server decides `limit` (20), `languages` (`['en']`) and the time range. A parameter name the SDK does not know throws `FinlightValidationError` before any request, because the server would ignore it silently and still count the call.
+
+## Search articles
+
+`articles.search` returns one page. `articles.searchAll` walks the cursor for you.
 
 ```ts
-const api = new FinlightApi({
-  apiKey: 'your-api-key',
-  logger: console, // Use console, winston, pino, or custom
-  logLevel: 'info', // 'debug' | 'info' | 'warn' | 'error'
-});
+// One page
+const page = await client.articles.search({ tickers: ['AAPL'], orderBy: 'availableAt', order: 'desc' });
+console.log(page.pagination.hasMore, page.pagination.nextCursor);
+
+// Many pages: the request body is frozen, only the cursor changes
+const result = client.articles.searchAll({ query: 'eventType:mna', limit: 100 }, { maxPages: 5 });
+for await (const article of result) {
+  console.log(article.id, article.title);
+}
+if (result.truncated) console.log('continue with cursor', result.nextCursor);
+
+// Or page by page
+for await (const p of client.articles.searchAll({ query: 'eventType:mna' }).pages()) {
+  console.log(p.articles.length, p.skipped.length);
+}
 ```
 
----
+- `searchAll` freezes the request body at the call. Later pages only change `cursor`, so the cursor stays valid.
+- It stops at `hasMore: false`, at `nextCursor: null` or after `maxPages` (default 10). At the limit it logs a warning, and `result.nextCursor` lets you continue.
+- Every page is a metered call. A result can be iterated only once.
+- `from` and `to` take a `Date` (sent as UTC with milliseconds) or a string (sent as is). They apply to the `orderBy` timestamp.
+- `sourceTypes` and `excludeSourceTypes` filter by the type of the source (`SOURCE_TYPES`: `newswire`, `press_release`, `financial_media`, `general_media`, `aggregator`, `blog`, `government`). Articles of unclassified sources (`source.type` is `null`) never match `sourceTypes` and are kept by `excludeSourceTypes`. Both also work on `stream` and `rawStream`; an unknown value ends the stream with a `ValidationFailedError`.
+- Entries that cannot be decoded are skipped, logged and listed in `page.skipped`. The rest of the page stays usable.
 
-## 📘 REST API Usage
-
-### Fetch Articles
+## Look up articles, companies and sources
 
 ```ts
-const response = await api.articles.fetchArticles({
-  query: '(ticker:AAPL OR ticker:TSLA) AND "earnings"',
-  tickers: ['AAPL', 'TSLA'],
-  countries: ['US'],
-  language: 'en',
-  pageSize: 10,
-  includeEntities: true,
-  includeContent: true,
-  from: '2024-01-01',
-  to: '2024-12-31',
-});
+import { cacheInfo } from 'finlight-client';
 
-console.log(response.articles);
+const article = await client.articles.get('pXhK9f2aQ1mZ0bT7cY3rLw', { include: ['content'] });
+const byLink = await client.articles.getByLink('https://www.reuters.com/markets/example', { include: ['companies'] });
+
+const [nvidia] = await client.companies.search({ q: 'NVDA', mic: 'XNAS' });
+const many = await client.companies.getMany([4821, 1234]);
+const record = await client.companies.get(4821); // no SDK cache: every call costs 1 credit
+console.log(cacheInfo(record)?.etag, many.skipped.length);
+
+// You keep the record; pass its ETag back. null means "not modified" (still 1 credit)
+const fresh = await client.companies.get(4821, { ifNoneMatch: '"80b88d6b…"' });
+
+const sources = await client.sources.list();
 ```
 
-### Fetch Article by Link
+- A 404 is a `NotFoundError` (`apiKind: 'not_found'`), not an empty result.
+- Articles indexed before the id rollout have no id lookup. Use `getByLink` for them.
+- Company endpoints need the `entityAccess` entitlement, otherwise they answer 403 (`ForbiddenError`).
+- The SDK keeps no cache of company records. To save credits, keep the records yourself and do not call again within `max-age`. `cacheInfo(record)` shows the ETag and Cache-Control. Pass the ETag back as `ifNoneMatch` and a 304 returns `null` ("not modified"); a 304 costs 1 credit too, so it saves the download, not the credit. Articles already carry the main company fields.
+- Each lookup (`companies.search`, `companies.getMany`, `companies.get`, `sources.list`) costs 1 credit, like an article request; `getMany` costs 1 per request, not per id. A 304 revalidation and error answers cost 1 credit too. Lookups share the monthly quota and the burst limit with the article endpoints, so a 429 is possible here too.
+- `companies.search`, `companies.getMany` and `sources.list` return arrays with an extra `skipped` field for entries that could not be decoded.
+
+## Absent, null and empty
+
+Some keys depend on your plan and on `include`. A missing key, `null` and `[]` mean different things, and the SDK keeps them apart.
 
 ```ts
-const article = await api.articles.fetchArticleByLink({
-  link: 'https://www.reuters.com/technology/example-article',
-  includeContent: true,
-  includeEntities: true,
-});
+import { contentPresent, sentimentPresent, companiesPresent, eventsPresent, toDate } from 'finlight-client';
 
-console.log(article);
+if (companiesPresent(article)) {
+  // article.companies is Company[]; [] means "tagged, no company"
+} else {
+  // not requested, not in your plan, or the raw channel
+}
+if (contentPresent(article) && article.content === null) {
+  // requested and entitled, but no text exists
+}
+const published: Date | null = toDate(article.publishedAt); // strict RFC 3339, null when unreadable
 ```
 
-### Fetch Sources
+- Missing key: not requested, not in your plan, or the raw channel.
+- `null`: requested and entitled, but there is no value (for example no text for `content`).
+- `[]`: a real empty list (for example tagged, but no company found).
+- This applies to `content`, `sentiment`, `companies`, `events`, `events[].companyIds` and `Source.hasContent`.
+- Timestamps stay strings, exactly as sent. `toDate()` parses them strictly.
+- Unknown keys from newer servers stay on the objects. `rawJson(value)` returns the JSON as received.
+
+## Real-time streams
+
+`client.stream()` follows enriched articles, `client.rawStream()` the raw skeleton before enrichment. Both connect on the first iteration. The SDK pings every 25 s, reconnects when no pong arrives for 60 s, renews the connection after 115 minutes, and drops duplicates.
 
 ```ts
-const sources = await api.sources.getSources();
-console.log(sources);
-```
-
----
-
-## 🔄 WebSocket Streaming
-
-### Subscribe to Live Articles
-
-```ts
-const client = new FinlightApi(
+const stream = client.stream(
+  { query: 'ticker:NVDA', language: 'en', includeUpdates: true, include: ['companies', 'events'] },
   {
-    apiKey: 'your-api-key',
-    logger: console,
-    logLevel: 'info',
-  },
-  {
-    // WebSocket-specific options
-    takeover: false, // takeover existing connections (default: false)
+    onAdmitted: (a) => console.log('admitted', a.leaseId),
+    onReconnect: (r) => console.log('reconnected', r.reason, 'last seen', r.lastSeenAt),
+    onError: (e) => console.warn(e.message), // problems that do not end the stream
   },
 );
 
-client.websocket.connect(
-  {
-    query: 'AI AND ticker:NVDA',
-    tickers: ['NVDA'],
-    language: 'en',
-    includeContent: true,
-    includeEntities: true,
-  },
-  (article) => {
-    console.log('Live article:', article);
-  },
-);
+for await (const item of stream) {
+  if (item.kind === 'created' || item.kind === 'updated') console.log(item.kind, item.data?.title);
+  // item.kind === 'other': an event this SDK version does not know yet; rawJson(item) has the frame
+}
 
-// To disconnect
-client.websocket.stop();
+// Raw: the article skeleton before enrichment; no include
+for await (const item of client.rawStream({ query: 'source:www.reuters.com' })) {
+  console.log(item.data?.firstSeenAt, item.data?.title);
+}
 ```
 
-### Raw WebSocket - Subscribe to Live Articles
+Things to know:
 
-The Raw WebSocket delivers articles faster by skipping AI enrichment (no sentiment, confidence, or company tagging). It connects to `wss://wss.finlight.me/raw`.
+- **Connection limit.** Your plan's WebSocket limit is shared by enriched streams, raw streams and older SDK versions. Do not run old and new streams side by side. When the limit is reached the SDK waits at least 60 s and tries again; `{ takeover: true }` replaces your stalest connection instead.
+- **Two hour limit.** The gateway ends every connection after 2 h. The SDK opens a new connection before that, re-subscribes, and closes the old one once the new one is admitted. When your plan is at its connection limit (for example a limit of 1), the old connection still counts and the new dial is refused; the SDK then closes the old connection and dials again at once, so the gap is about one dial long. Only if that dial is refused too does the usual wait of at least 60 s apply.
+- **Initial push.** After each subscribe the enriched stream sends the latest matching article. It can be old. The SDK drops it when it was already delivered on this stream.
+- **Large frames.** Live frames over 32,000 bytes are dropped by the server without notice. This can happen with `include: ['content']` on long articles. Fetch the text with `articles.get(id, { include: ['content'] })` instead.
+- `onAdmitted` fires before the server checks your subscribe. It does not mean the subscribe was accepted.
+- The SDK does not backfill. `onReconnect` gives you `lastSeenAt` so you can fill gaps through REST.
+- Leaving the loop, `stream.close()` or the abort signal closes the socket and stops all timers.
+- A stream ends with an error for a refused key, a plan without WebSockets, an invalid subscribe and a `connection_limit` preemption (`PreemptedError`). Other problems go to `onError` and the stream keeps running.
+- **Used-up WebSocket quota.** When the quota of the period is used up (refused dial or `quota_exceeded` preemption), the stream does not end: it tries again every hour until the quota allows it. Each attempt is logged as a warning and reported to `onQuotaWait`. Set `quotaReconnect: false` to end the stream with the error instead; `quotaReconnectIntervalMs` changes the interval. REST calls never wait: a monthly 429 fails at once.
+- `rawStream` has no `include` and no enrichment filters. `sourceTypes` and `excludeSourceTypes` work on it.
 
-```ts
-const client = new FinlightApi(
-  {
-    apiKey: 'your-api-key',
-    logger: console,
-    logLevel: 'info',
-  },
-  {
-    // WebSocket-specific options
-    takeover: true,
-  },
-);
+## Webhooks
 
-client.rawWebsocket.connect(
-  {
-    query: 'title:Nvidia',
-    sources: ['reuters.com'],
-    language: 'en',
-  },
-  (article) => {
-    console.log('Raw article:', article);
-  },
-);
-
-// To disconnect
-client.rawWebsocket.stop();
-```
-
-**Raw WebSocket query fields:** The raw WebSocket supports field-level filtering with `source:`, `title:`, and `summary:` fields (unlike the enhanced WebSocket which also supports `ticker:`, `country:`, `exchange:`, etc.).
-
----
-
-## 🔔 Webhook Support
-
-Securely receive webhook events from finlight with HMAC signature verification:
+`Webhooks.constructEvent(rawBody, headers, secret)` checks the signature and the timestamp (300 s tolerance by default), then reads the body. It returns a `WebhookEvent`, or a `WrongPayloadVersion` result for a correctly signed body in the old format.
 
 ```ts
-import { WebhookService } from 'finlight-client';
 import express from 'express';
+import { Webhooks, WrongPayloadVersion, WebhookVerificationError } from 'finlight-client';
 
 const app = express();
-
-app.post('/webhook', express.raw({ type: 'application/json' }), (req, res) => {
+// Keep the body raw: never verify re-serialized JSON.
+app.post('/finlight', express.raw({ type: 'application/json' }), (req, res) => {
+  let result;
   try {
-    const article = WebhookService.constructEvent(
-      req.body.toString(),
-      req.headers['x-webhook-signature'] as string,
-      process.env.WEBHOOK_SECRET!,
-      req.headers['x-webhook-timestamp'] as string,
-    );
-
-    console.log('New article:', article.title);
-    res.sendStatus(200);
+    result = Webhooks.constructEvent(req.body, req.headers, process.env.FINLIGHT_WEBHOOK_SECRET!);
   } catch (err) {
-    console.error('Webhook verification failed:', err);
-    res.sendStatus(400);
+    return res.sendStatus(err instanceof WebhookVerificationError ? 400 : 500);
   }
+  if (result instanceof WrongPayloadVersion) return res.sendStatus(204); // old format during the switch
+  res.sendStatus(204); // answer within 5 s, work afterwards
+  queue.push(result); // dedupe on result.eventId
 });
 ```
 
----
+The signature covers the raw bytes. Get them before any JSON parser runs:
 
-## 🛠️ Configuration
+- Express: `express.raw({ type: 'application/json' })` on the webhook route.
+- Fastify: `addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => done(null, body))`.
+- Next.js route handler: `await request.text()`, and pass `request.headers`.
+- `node:http`: collect the request chunks into a `Buffer`.
 
-### Client Options
+- Deliveries can repeat. Dedupe on `eventId`.
+- Answer with 2xx within 5 s and do slow work afterwards.
+- Never answer with 410: it disables the webhook at once.
+- `isTest` is true for test deliveries from the dashboard.
+- `Webhooks.verifySignature(rawBody, signature, timestamp, secret)` checks only the signature, for frameworks that hand you the two header values.
+- The SDK does not manage webhooks. Create and change them in the finlight dashboard.
 
-```ts
-const api = new FinlightApi({
-  apiKey: 'your-api-key', // Required
-  baseUrl: 'https://api.finlight.me', // Optional
-  wssUrl: 'wss://wss.finlight.me', // Optional
-  timeout: 5000, // Request timeout in ms (default: 5000)
-  retryCount: 3, // Retry count (default: 3)
-  logger: console, // Logger instance (default: console)
-  logLevel: 'info', // Log level (default: 'info')
-});
-```
-
-### WebSocket Options
-
-Both the Enhanced and Raw WebSocket clients accept the same options:
+## Errors and retries
 
 ```ts
-const api = new FinlightApi(
-  { apiKey: 'your-api-key' },
-  {
-    // WebSocket options
-    pingInterval: 25, // Heartbeat interval in seconds (default: 25)
-    pongTimeout: 60, // Pong timeout in seconds (default: 60)
-    baseReconnectDelay: 0.5, // Initial reconnect delay in seconds (default: 0.5)
-    maxReconnectDelay: 10, // Max reconnect delay in seconds (default: 10)
-    takeover: false, // Takeover existing connections (default: false)
-    onClose: (code, reason) => {
-      // Custom close handler
-      console.log('Closed:', code, reason);
-    },
-  },
-);
-```
+import { isFinlightApiError, NotFoundError, RateLimitedError } from 'finlight-client';
 
----
-
-## 📝 Logging
-
-### Built-in Loggers
-
-```ts
-import { FinlightApi, noopLogger } from 'finlight-client';
-
-// Silent mode
-const api = new FinlightApi({
-  apiKey: 'key',
-  logger: noopLogger,
-});
-
-// Console logging (default)
-const api = new FinlightApi({
-  apiKey: 'key',
-  logger: console,
-  logLevel: 'debug',
-});
-```
-
-### Custom Logger
-
-```ts
-import { Logger } from 'finlight-client';
-
-const customLogger: Logger = {
-  debug: (...args) => console.log('[DEBUG]', ...args),
-  info: (...args) => console.log('[INFO]', ...args),
-  warn: (...args) => console.warn('[WARN]', ...args),
-  error: (...args) => console.error('[ERROR]', ...args),
-};
-
-const api = new FinlightApi({
-  apiKey: 'key',
-  logger: customLogger,
-});
-```
-
-### Winston/Pino Integration
-
-```ts
-import winston from 'winston';
-
-const winstonLogger = winston.createLogger({
-  level: 'info',
-  format: winston.format.json(),
-  transports: [new winston.transports.Console()],
-});
-
-const api = new FinlightApi({
-  apiKey: 'key',
-  logger: winstonLogger, // Pass winston/pino directly!
-});
-```
-
----
-
-## 🧾 Types & Interfaces
-
-### `GetArticlesParams`
-
-```ts
-interface GetArticlesParams {
-  query?: string; // Advanced query: (ticker:AAPL OR ticker:NVDA)
-  tickers?: string[]; // Filter by tickers: ['AAPL', 'NVDA']
-  sources?: string[]; // Limit to specific sources
-  excludeSources?: string[]; // Exclude specific sources
-  optInSources?: string[]; // Additional sources to include
-  countries?: string[]; // Filter by country codes: ['US', 'GB']
-  includeContent?: boolean; // Include full article content
-  includeEntities?: boolean; // Include tagged company data
-  excludeEmptyContent?: boolean; // Skip articles with no content
-  from?: string; // Start date (YYYY-MM-DD or ISO)
-  to?: string; // End date (YYYY-MM-DD or ISO)
-  language?: string; // Language filter (default: 'en')
-  orderBy?: 'publishDate' | 'createdAt' | 'revisedDate';
-  order?: 'ASC' | 'DESC';
-  pageSize?: number; // Results per page (1-1000)
-  page?: number; // Page number
+try {
+  await client.articles.search({ eventTypes: ['earnigns'] });
+} catch (err) {
+  if (err instanceof RateLimitedError && err.limitType === 'monthly') {
+    console.log('quota used up for this period');
+  } else if (err instanceof NotFoundError) {
+    console.log('not found');
+  } else if (isFinlightApiError(err)) {
+    console.log(err.status, err.code, err.apiKind, err.detail, err.requestId);
+    for (const e of err.errors) console.log(e.field, e.issue, e.allowedValues);
+  }
 }
 ```
 
-### `GetArticleByLinkParams`
+Every SDK error extends `FinlightError` and has a `kind` field. API errors carry `status`, `code`, `title`, `detail`, `requestId`, `errors` (`FieldIssue[]`), `apiKind` and `raw` (the body as received; `rawJson(err)` returns the parsed JSON). Each logical call sends its own `X-Request-Id`; retries reuse it.
 
-```ts
-interface GetArticleByLinkParams {
-  link: string; // The URL of the article to fetch
-  includeContent?: boolean; // Include full article content
-  includeEntities?: boolean; // Include tagged company data
-}
+```text
+FinlightError                    kind
+├── FinlightApiError             api (apiKind: one per problem code, or other)
+│   ├── ValidationFailedError    validation_failed
+│   ├── CursorInvalidError       cursor_invalid
+│   ├── CursorMismatchError      cursor_mismatch
+│   ├── UnauthorizedError        unauthorized
+│   ├── ForbiddenError           forbidden
+│   ├── NotFoundError            not_found
+│   ├── RateLimitedError         rate_limited (limitType, retryAfterMs)
+│   └── InternalServerError      internal_error
+├── FinlightValidationError      validation
+├── FinlightNetworkError         network
+│   └── FinlightTimeoutError     timeout
+├── FinlightDecodeError          decode
+├── WebhookVerificationError     webhook_verification
+└── PreemptedError               preempted
 ```
 
-### `GetArticlesWebSocketParams`
+Retries:
+
+| Answer | Retry |
+|---|---|
+| 400, 401, 403, 404 | never |
+| 429 monthly / unknown | never |
+| 429 burst | once, after exactly `Retry-After` (10 s when the header is missing); on by default, `retryOnBurst: 'off'` turns it off |
+| 5xx, network errors, timeouts | up to 3 times with growing, jittered waits |
+
+Every call takes an `AbortSignal`. An abort ends waits at once, is never retried, and rejects with the signal's reason.
 
 ```ts
-interface GetArticlesWebSocketParams {
-  query?: string;
-  tickers?: string[];
-  sources?: string[];
-  excludeSources?: string[];
-  optInSources?: string[];
-  countries?: string[]; // Filter by country codes: ['US', 'GB']
-  includeContent?: boolean;
-  includeEntities?: boolean;
-  excludeEmptyContent?: boolean;
-  language?: string;
-}
+const controller = new AbortController();
+setTimeout(() => controller.abort(), 5_000);
+await client.articles.search({ query: 'ticker:TSLA' }, { signal: controller.signal });
 ```
 
-### `GetRawArticlesWebSocketParams`
+## Configuration
 
-```ts
-interface GetRawArticlesWebSocketParams {
-  query?: string; // Field filters: source:, title:, summary:
-  sources?: string[]; // Limit to specific sources
-  excludeSources?: string[]; // Exclude specific sources
-  optInSources?: string[]; // Additional sources to include
-  language?: string; // Language filter (default: 'en')
-}
-```
+| Option | Default | Meaning |
+|---|---|---|
+| `apiKey` | - | Required. |
+| `baseUrl` | `https://api.finlight.me` | REST base URL. |
+| `wssUrl` | `wss://wss.finlight.me` | WebSocket URL; raw uses `<wssUrl>/raw`. |
+| `timeoutMs` | `30000` | Timeout of one HTTP attempt (ms). |
+| `totalTimeoutMs` | - | Optional limit for a whole call, retries and waits included. |
+| `maxRetries` | `3` | Retries for 5xx, network errors and timeouts. |
+| `retryBaseDelayMs` / `retryMaxDelayMs` | `500` / `8000` | Backoff between retries: first wait and largest wait (with jitter). |
+| `retryOnBurst` | `'once'` | `'once'` or `'off'` for 429 burst answers. |
+| `burstWaitMs` | `10000` | Wait before the burst retry when the 429 has no `Retry-After`. |
+| `maxPages` | `10` | Page limit of `searchAll`. |
+| `maxResponseBytes` | `33554432` (32 MiB) | Largest REST response body. |
+| `pingIntervalMs` / `watchdogTimeoutMs` / `rotationIntervalMs` | `25000` / `60000` / `6900000` | Stream ping, pong watchdog and rotation. |
+| `reconnectBaseDelayMs` / `reconnectMaxDelayMs` | `1000` / `30000` | Stream reconnect backoff: first and largest wait. |
+| `longBackoffMs` | `60000` | Wait after "too many connections" and 429 dial refusals. |
+| `quotaReconnect` / `quotaReconnectIntervalMs` | `true` / `3600000` | Streams only: when the WebSocket quota is used up, retry every hour (`false` ends the stream with the error). REST never waits for a new quota. |
+| `searchFailedThreshold` | `5` | After this many `SEARCH_FAILED` in a row an error goes to `onError`. |
+| `dedupeCacheSize` | `1000` | Entries of the duplicate filter per stream. |
+| `maxMessageBytes` | `33554432` (32 MiB, min. 16 MiB) | Largest incoming stream message. |
+| `connectTimeoutMs` | `30000` | WebSocket handshake timeout. |
+| `fetch` / `wsAgent` | - | Your own `fetch` (REST) and HTTP agent (WebSocket), e.g. for a proxy. Their own timeouts then apply; make sure they do not retry on their own. |
+| `logger` | - | Any logger with `debug`/`info`/`warn`/`error`. |
+| `clock` | - | Replaceable clock for tests. |
 
-### `Article`
+## Logging
 
-```ts
-interface Article {
-  link: string;
-  title: string;
-  publishDate: Date;
-  createdAt?: Date;
-  source: string;
-  language: string;
-  sentiment?: string;
-  confidence?: number;
-  summary?: string;
-  images?: string[];
-  content?: string;
-  companies?: Company[];
-}
-```
+The SDK is silent by default. Set `NODE_DEBUG=finlight` to see debug output, or pass `logger: console` (or pino, winston). It never logs the API key, the webhook secret, signatures or full bodies, and it installs no process handlers.
 
-### `RawArticle`
+## Data notes
 
-```ts
-interface RawArticle {
-  link: string;
-  title: string;
-  publishDate: Date;
-  createdAt?: Date;
-  source: string;
-  language: string;
-  summary?: string;
-  images?: string[];
-}
-```
+- Some old articles have `publishedAt` `1970-01-01T00:00:00.000Z` or an empty `summary`. The SDK delivers them as they are.
+- On articles tagged before roles existed, `companies[].role` and `relevance` are `null`, and `events` is `[]`.
+- Articles indexed before the id rollout answer 404 on `articles.get`; `getByLink` finds them.
+- `availableAt` is always `null` on raw, and `null` for articles from before its rollout.
 
-### `Company`
+<a id="migration"></a>
 
-```ts
-interface Company {
-  companyId: number;
-  confidence?: number;
-  country?: string;
-  exchange?: string;
-  industry?: string;
-  sector?: string;
-  name: string;
-  ticker: string;
-  isin?: string;
-  openfigi?: string;
-  primaryListing?: Listing;
-  isins?: string[];
-  otherListings?: Listing[];
-}
-```
+## Migrating from 3.x
 
----
+The full guide is on [docs.finlight.me](https://docs.finlight.me). The main changes:
 
-## ❗ Error Handling & Retry Logic
+| 3.x (API v2) | 4.x (API v3) |
+|---|---|
+| `new FinlightApi({ apiKey })` | `new FinlightClient({ apiKey })` |
+| `articles.fetchArticles(...)` | `articles.search(...)`, `articles.searchAll(...)` |
+| `articles.fetchArticleByLink(...)` | `articles.getByLink(link)`, `articles.get(id)` |
+| `sources.getSources()` | `sources.list()` |
+| `client.websocket.connect(params, onArticle)`, `stop()` | `for await (const item of client.stream(params))`, `stream.close()` |
+| raw WebSocket client | `client.rawStream(params)` |
+| `WebhookService.constructEvent(body, signature, secret, timestamp)` | `Webhooks.constructEvent(rawBody, headers, secret)` or `Webhooks.constructEventFromValues(rawBody, signature, timestamp, secret)` |
+| `logLevel` | configure levels in your own `logger` |
+| `publishDate` | `publishedAt` |
+| `createdAt` | `firstSeenAt` |
+| `revisedDate` | `revisedAt` |
+| `images: string[]` | `media: { url }[]` |
+| `source: string` | `source.domain` |
+| `sentiment`, `confidence` | `sentiment: { label, confidence }` |
+| `includeContent`, `includeEntities` | `include: ['content', 'companies', 'events']` |
+| `page`, `pageSize` | `limit`, `cursor` (`searchAll` pages for you) |
+| `order: 'ASC' / 'DESC'` | `order: 'asc' / 'desc'` |
+| `language: 'en'` | `languages: ['en']` |
+| `isUpdate` | `article.updated` (`item.kind === 'updated'`) |
+| webhook body = article | `event.data` + `event.eventId` |
 
-### REST API Retries
+Switching a webhook to v3, in four steps:
 
-The client automatically retries failed HTTP requests for:
+1. Deploy the new SDK.
+2. Answer `WrongPayloadVersion` with 2xx and keep its `raw` JSON if you need the data.
+3. Switch the webhook to `payloadVersion` 3 in the finlight dashboard.
+4. Wait about 2 h. Retries that were already queued still arrive in the old format.
 
-- `429 Too Many Requests`
-- `500 Internal Server Error`
-- `502 Bad Gateway`
-- `503 Service Unavailable`
-- `504 Gateway Timeout`
-
-Retry behavior uses exponential backoff (500ms, 1000ms, 2000ms, etc.).
-
-### WebSocket Reconnection
-
-On disconnection, the client automatically attempts to reconnect with:
-
-- Exponential backoff (0.5s → 1s → 2s → ... → 10s max)
-- Proactive connection rotation (every 115 minutes to avoid AWS 2-hour limit)
-- Rate limit and error handling with appropriate backoff
-
----
-
-## 🧪 Testing
-
-### Unit Tests
+## Development
 
 ```bash
-npm test
+npm ci
+npm test                      # unit and conformance tests, no network, no keys
+npm run conformance:check     # vendored kit matches conformance/MANIFEST
+npm run conformance:sync -- --from <monorepo>/shared/contracts/api-v3
+FINLIGHT_API_KEY=... FINLIGHT_BASE_URL=https://api.dev.finlight.me \
+  FINLIGHT_WSS_URL=wss://wss.dev.finlight.me npm run test:live
 ```
 
-### Integration Tests
+The contract kit lives in `conformance/` (`CONTRACT_VERSION`, sha256 `MANIFEST`) and is not published. Every kit case runs as its own jest test; `test/conformance/CASES.md` maps cases to tests. Live tests run only against dev and need all three variables; production hosts are refused.
 
-Integration tests require a valid API key:
+## License
 
-```bash
-# All integration tests
-FINLIGHT_API_KEY=your_key npm run test:integration
-
-# API tests only
-FINLIGHT_API_KEY=your_key npm run test:integration:api
-
-# WebSocket tests only
-FINLIGHT_API_KEY=your_key npm run test:integration:ws
-```
-
----
-
-## 📮 Support
-
-If you encounter issues or have questions:
-
-- 📧 Email: [info@finlight.me](mailto:info@finlight.me)
-- 🐛 Issues: [GitHub Issues](https://github.com/jubeiargh/finlight-client/issues)
-
----
-
-## 🎉 Happy coding!
-
-finlight helps you stay ahead of the market with real-time, enriched news feeds.
+MIT

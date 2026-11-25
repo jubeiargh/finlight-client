@@ -1,4 +1,15 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "test", "dist", "**/*spec.ts", "**/*test.ts"],
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "types": ["node"],
+    "paths": {},
+    "declaration": true,
+    "sourceMap": false,
+    "removeComments": false
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "test", "examples", "conformance"]
 }

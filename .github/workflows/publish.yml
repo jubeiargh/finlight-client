@@ -1,40 +1,60 @@
 name: Publish to npm and JSR
 
+# Publishing happens only here, from a clean checkout of the release tag.
 on:
   release:
     types: [published]
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
-  publish-npm:
+  verify:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
+    outputs:
+      npm-tag: ${{ steps.tag.outputs.npm-tag }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Tag equals package.json version
+        run: node scripts/sync-version.js --check --tag "${{ github.ref_name }}"
+      - name: Choose the npm dist-tag
+        id: tag
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [[ "$version" == *-* ]]; then echo "npm-tag=next" >> "$GITHUB_OUTPUT"; else echo "npm-tag=latest" >> "$GITHUB_OUTPUT"; fi
+      - run: npm run conformance:check
+      - run: npm test
+      - run: npm run build
+      - run: npm run pack:check
+
+  publish-npm:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
       - run: npm ci
       - run: npm run build
-      - run: npm publish --provenance --access public
+      - run: npm publish --provenance --access public --tag ${{ needs.verify.outputs.npm-tag }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-jsr:
+    needs: verify
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Sync jsr.json version from package.json
-        run: node -e "const fs=require('fs');const p=require('./package.json');const j=JSON.parse(fs.readFileSync('jsr.json','utf8'));j.version=p.version;fs.writeFileSync('jsr.json',JSON.stringify(j,null,2)+'\n');"
-      - name: Generate src/version.ts
-        run: node scripts/update-version.js
+      - run: npm ci
       - name: Publish to JSR (OIDC, no token)
-        run: npx jsr publish --allow-dirty
+        run: npx -y jsr publish
